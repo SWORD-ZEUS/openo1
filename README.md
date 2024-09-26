@@ -18,11 +18,31 @@ OpenO1是一个基于大型语言模型的开源项目，旨在通过结合思�
 
 ## 安装
 
-（待补充）
+1. 克隆仓库:
+   ```
+   git clone https://github.com/SWORD-ZEUS/openo1.git
+   cd openo1
+   ```
+
+2. 安装依赖:
+   ```
+   pip install -r requirements.txt
+   ```
+
+3. 下载Llama 3 7B模型并放置在适当的位置。
 
 ## 使用方法
 
-（待补充）
+1. 准备数据集:
+   将PRM800K数据集放在 `data/` 目录下。
+
+2. 配置训练参数:
+   编辑 `configs/sft_config.py` 文件。
+
+3. 运行SFT训练:
+   ```
+   python scripts/run_sft.py
+   ```
 
 ## 项目结构
 
