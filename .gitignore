@@ -49,3 +49,4 @@ Thumbs.db
 data/raw/*
 data/processed/*
 models/checkpoints/*
+dataset/prm800k/*

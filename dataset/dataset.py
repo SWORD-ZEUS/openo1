@@ -1,4 +1,4 @@
-import torch
+import json
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 
@@ -9,9 +9,26 @@ class PRM800KDataset(Dataset):
         self.data = self.load_data(data_path)
 
     def load_data(self, data_path):
-        # 实现加载 PRM800K 数据集的逻辑
-        # 返回一个包含 (input, thinking_step) 对的列表
-        pass
+        data = []
+        with open(data_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                item = json.loads(line)
+                question = item['question']['problem']
+                steps = [step['completions'][step['chosen_completion']]['text'] 
+                         for step in item['label']['steps'] 
+                         if step['chosen_completion'] is not None]
+                ground_truth = item['question']['ground_truth_answer']
+                data.extend(self.process_question_steps(question, steps, ground_truth))
+        return data
+
+    def process_question_steps(self, question, steps, ground_truth):
+        processed_data = []
+        current_input = question
+        for step in steps:
+            processed_data.append((current_input, step))
+            current_input = f"{current_input}\n{step}"
+        processed_data.append((current_input, ground_truth))
+        return processed_data
 
     def __len__(self):
         return len(self.data)
