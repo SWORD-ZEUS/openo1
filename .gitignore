@@ -46,7 +46,6 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-data/raw/*
-data/processed/*
 models/checkpoints/*
-dataset/prm800k/*
+dataset/*
+outputs/*
