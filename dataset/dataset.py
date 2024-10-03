@@ -5,6 +5,8 @@ from transformers import AutoTokenizer
 class PRM800KDataset(Dataset):
     def __init__(self, data_path, tokenizer_name, max_length=512):
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
         self.max_length = max_length
         self.data = self.load_data(data_path)
 
@@ -13,21 +15,17 @@ class PRM800KDataset(Dataset):
         with open(data_path, 'r', encoding='utf-8') as f:
             for line in f:
                 item = json.loads(line)
-                question = item['question']['problem']
-                steps = [step['completions'][step['chosen_completion']]['text'] 
-                         for step in item['label']['steps'] 
-                         if step['chosen_completion'] is not None]
-                ground_truth = item['question']['ground_truth_answer']
-                data.extend(self.process_question_steps(question, steps, ground_truth))
+                question = item['problem']
+                steps = item['steps']
+                data.extend(self.process_question_steps(question, steps))
         return data
 
-    def process_question_steps(self, question, steps, ground_truth):
+    def process_question_steps(self, question, steps):
         processed_data = []
         current_input = question
         for step in steps:
             processed_data.append((current_input, step))
             current_input = f"{current_input}\n{step}"
-        processed_data.append((current_input, ground_truth))
         return processed_data
 
     def __len__(self):

@@ -3,13 +3,14 @@ from torch.utils.data import DataLoader
 from transformers import AdamW, get_linear_schedule_with_warmup
 from tqdm import tqdm
 from peft import LoraConfig, get_peft_model
-
+import os
 class SFTTrainer:
-    def __init__(self, model, train_dataset, val_dataset, config):
+    def __init__(self, model, train_dataset, val_dataset, config, save_path):
         self.model = model
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
         self.config = config
+        self.save_path = save_path
         
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model.to(self.device)
@@ -21,6 +22,8 @@ class SFTTrainer:
             num_warmup_steps=config.warmup_steps, 
             num_training_steps=config.total_steps
         )
+        if self.save_path is not None:
+            os.makedirs(self.save_path, exist_ok=True)
         
     def train(self):
         train_dataloader = DataLoader(self.train_dataset, batch_size=self.config.batch_size, shuffle=True)
@@ -43,6 +46,10 @@ class SFTTrainer:
             # 在每个 epoch 结束后进行验证
             val_loss = self.validate()
             print(f"Epoch {epoch+1} Validation Loss: {val_loss:.4f}")
+        
+        # 保存模型
+        self.model.save_pretrained(self.save_path)
+        print(f"Model saved to {self.save_path}")
     
     def validate(self):
         self.model.eval()

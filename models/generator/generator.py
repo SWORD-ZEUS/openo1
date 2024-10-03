@@ -1,21 +1,27 @@
 from transformers import LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import get_peft_model, LoraConfig, TaskType
 import torch
+from torch import nn
 
-class Generator:
+class Generator(nn.Module):
     def __init__(self, model_path, lora_r=8, lora_alpha=32, lora_dropout=0.1):
         """
         初始化Generator类
         
         Args:
-            model_path (str): Llama 3 7B模型的路径
+            model_path (str): Llama 3.1 8B模型的路径
             lora_r (int, optional): LoRA的r值。 Defaults to 8.
             lora_alpha (int, optional): LoRA的alpha值。 Defaults to 32.
             lora_dropout (float, optional): LoRA的dropout值。 Defaults to 0.1.
         """
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = LlamaForCausalLM.from_pretrained(model_path)
-        self.tokenizer = LlamaTokenizer.from_pretrained(model_path)
+        super().__init__()
+        self.model = AutoModelForCausalLM.from_pretrained(model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+
+        # # 设置填充标记
+        # if self.tokenizer.pad_token is None:
+        #     self.tokenizer.pad_token = self.tokenizer.eos_token
 
         # 配置LoRA
         peft_config = LoraConfig(
@@ -26,8 +32,11 @@ class Generator:
             lora_dropout=lora_dropout
         )
         self.model = get_peft_model(self.model, peft_config)
-        self.model.to(self.device)
     
+    # def to(self, device):
+    #     self.model = self.model.to(device)
+    #     return self
+
     def generate_thinking_step(self, prompt, max_length=100):
         """
         生成一个思考步骤
