@@ -12,10 +12,14 @@ from configs.sft_config import SFTConfig
 
 def main():
     config = SFTConfig()
+    
+    # 添加 Wandb 配置
+    if config.use_wandb:
+        os.environ["WANDB_API_KEY"] = config.wandb_api_key
+    
     model_path = os.path.join(config.download_model_dir, config.model_name)
     print(f"Model path: {model_path}")
-    model = Generator(model_path)
-    
+    model = Generator(model_path, training=True)
 
     train_dataset = PRM800KDataset(config.train_data_path, model_path, config.max_length)
     val_dataset = PRM800KDataset(config.test_data_path, model_path, config.max_length)
