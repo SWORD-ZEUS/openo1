@@ -5,3 +5,7 @@ tqdm>=4.62.0
 datasets>=2.10.0
 sentencepiece>=0.1.96
 peft>=0.3.0
+PyYAML
+matplotlib
+pytorch_lightning
+yaml

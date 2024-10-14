@@ -1,0 +1,68 @@
+# sft_config.yaml
+
+download_model_dir: "/storage/zhuangkai/data/openo1/download_model_weights"
+model_name: "Meta-Llama-3.1-8B-Instruct"  # 指向新的模型路径
+learning_rate: 5e-5
+batch_size: 4
+num_epochs: 3
+warmup_steps: 100
+total_steps: 10000  # 根据数据集大小和 epoch 数调整
+max_length: 512
+lora_r: 8
+lora_alpha: 32
+lora_dropout: 0.1
+val_interval: 0.1  # Validate every val_interval epoch
+weight_save_dir: "/storage/zhuangkai/data/openo1/weights/sft"
+train_data_path: "/zhuangkai/openo1/outputs/prm800k/phase2_train_gt_pre_generated_solution_to_step_list.jsonl"
+test_data_path: "/zhuangkai/openo1/outputs/prm800k/phase2_test_gt_pre_generated_solution_to_step_list.jsonl"
+# load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
+
+wandb:
+  # use_wandb: true
+  use_wandb: false
+  project: "openo1_sft"
+  entity: "sota"  # 替换为Wandb 用户名
+  api_key: "local-dcbced16c903a79158b4ccce5f5b2af5b2d53b75"  # 替换为Wandb API 密钥
+  name: "sft_run"  # 为本次运行指定一个名称
+  tags: ["sft", "llama3", "8b"]  # 添加标签
+  notes: "Supervised fine-tuning of Llama 3 8B model"  # 添加描述
+  group: "sft_experiments"  # 指定分组
+  job_type: "training"  # 指定作业类型
+  dir: "/storage/zhuangkai/data/openo1/wandb"  # 指定wandb文件存储目录
+
+gradient_accumulation_steps: 4
+deepspeed_config:
+  train_micro_batch_size_per_gpu: 4
+  gradient_accumulation_steps: 4
+  optimizer:
+    type: "Adam"
+    params:
+      lr: 5e-5
+      betas: [0.9, 0.999]
+      eps: 1e-8
+      weight_decay: 0
+  scheduler:
+    type: "WarmupLR"
+    params:
+      warmup_min_lr: 0
+      warmup_max_lr: 5e-5
+      warmup_num_steps: 100
+  fp16:
+    enabled: true
+  zero_optimization:
+    stage: 3
+    offload_optimizer:
+      device: "cpu"
+      pin_memory: true
+    offload_param:
+      device: "cpu"
+      pin_memory: true
+    overlap_comm: true
+    contiguous_gradients: true
+    sub_group_size: 1e9
+    reduce_bucket_size: "auto"
+    stage3_prefetch_bucket_size: "auto"
+    stage3_param_persistence_threshold: "auto"
+    stage3_max_live_parameters: 1e9
+    stage3_max_reuse_distance: 1e9
+    stage3_gather_fp16_weights_on_model_save: true

@@ -49,3 +49,5 @@ Thumbs.db
 models/checkpoints/*
 dataset/*
 outputs/*
+# Ignore lightning_logs directory
+lightning_logs/*

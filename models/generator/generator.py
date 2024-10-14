@@ -46,7 +46,7 @@ class Generator(nn.Module):
         Returns:
             str: 生成的思考步骤
         """
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        inputs = self.tokenizer(prompt, return_tensors="pt")
         outputs = self.model.generate(**inputs, max_length=max_length)
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 

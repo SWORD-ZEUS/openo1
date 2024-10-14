@@ -37,7 +37,7 @@ OpenO1是一个基于大型语言模型的开源项目，旨在通过结合思�
    将PRM800K数据集放在 `data/` 目录下。
 
 2. 配置训练参数:
-   编辑 `configs/sft_config.py` 文件。
+   编辑 `configs/sft_config.yaml` 文件。
 
 3. 运行SFT训练:
    ```
