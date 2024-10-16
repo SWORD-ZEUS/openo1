@@ -13,13 +13,16 @@ from models.generator.generator import Generator
 from dataset.dataset import PRM800KDataset
 from dataset.data_module import PRM800KDataModule
 from training.sft.sft_trainer import SFTTrainer
-from configs.sft_config import SFTConfig
 import time
 
 def main():
     # 加载配置
     with open("/zhuangkai/openo1/configs/sft_config.yaml", 'r') as file:
         config = yaml.safe_load(file)
+    batch_size = config['batch_size']
+    gpus_per_node = config['gpus_per_node']
+    train_micro_batch_size_per_gpu = batch_size // gpus_per_node
+    config['deepspeed_config']['train_micro_batch_size_per_gpu'] = train_micro_batch_size_per_gpu
 
     # 设置 Wandb
     if os.environ["NODE_RANK"] == "0":
@@ -31,7 +34,7 @@ def main():
                                 notes=config['wandb']['notes'],
                                 group=config['wandb']['group'],
                                 job_type=config['wandb']['job_type'],
-                                dir=config['wandb']['dir'],
+                                save_dir=config['wandb']['save_dir'],
             )
             print("Initialize Wandb Logger successfully")
         else:
@@ -47,25 +50,52 @@ def main():
     model = Generator(model_path, training=True)
 
     train_dataset = PRM800KDataset(config['train_data_path'], model_path, config['max_length'])
-    val_dataset = PRM800KDataset(config['test_data_path'], model_path, config['max_length'])
+    val_dataset = PRM800KDataset(config['val_data_path'], model_path, config['max_length'])
 
-    data_module = PRM800KDataModule(train_dataset, val_dataset, config['batch_size'])
+    data_module = PRM800KDataModule(train_dataset, val_dataset, config['batch_size_per_gpu'])
 
+    
     trainer = SFTTrainer(model, train_dataset, val_dataset, config)
+    strategy = DeepSpeedStrategy(config=config['deepspeed_config'])
 
-    strategy = DeepSpeedStrategy(stage=3, offload_optimizer=True, offload_parameters=True)
-
-    pl_trainer = pl.Trainer(
-        max_epochs=config['num_epochs'],
-        devices=-1,  # 使用所有可用的 GPU
-        accelerator="gpu",
-        strategy=strategy,
-        precision=16,  # Use mixed precision
-        accumulate_grad_batches=config['gradient_accumulation_steps'],
-        val_check_interval=config['val_interval'],
-        logger=logger,
-        callbacks=[pl.callbacks.ModelCheckpoint(dirpath=config['weight_save_dir'], save_top_k=3, monitor="val_loss")]
-    )
+    # strategy = DeepSpeedStrategy(stage=3, offload_optimizer=True, offload_parameters=True)
+    checkpoint_path = getattr(config, 'checkpoint_path', None)
+    if checkpoint_path:
+        print(f"Loading model from {checkpoint_path}")
+        pl_trainer = pl.Trainer(
+            resume_from_checkpoint=checkpoint_path,
+            max_epochs=config['num_epochs'],
+            devices=-1,
+            accelerator="gpu",
+            strategy=strategy,
+            precision=16,
+            accumulate_grad_batches=config['gradient_accumulation_steps'],
+            val_check_interval=config['val_interval'],
+            logger=logger,
+            callbacks=[pl.callbacks.ModelCheckpoint(
+                dirpath=config['weight_save_dir'], 
+                save_top_k=1, 
+                monitor="val_loss",
+                save_last=True,
+            )]
+        )
+    else:
+        pl_trainer = pl.Trainer(
+            max_epochs=config['num_epochs'],
+            devices=-1,  # 使用所有可用的 GPU
+            accelerator="gpu",
+            strategy=strategy,
+            precision=16,  # Use mixed precision
+            accumulate_grad_batches=config['gradient_accumulation_steps'],
+            val_check_interval=config['val_interval'],
+            logger=logger,
+            callbacks=[pl.callbacks.ModelCheckpoint(
+                dirpath=os.path.join(config['weight_save_dir'], time.strftime('%m%d%H%M%S')), 
+                save_top_k=1, 
+                monitor="val_loss",
+                save_last=True,
+                )]
+        )
 
     pl_trainer.fit(trainer, datamodule=data_module)
 

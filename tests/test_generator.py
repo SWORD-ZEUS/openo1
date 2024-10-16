@@ -43,14 +43,17 @@ def main():
 
     model = GeneratorModule(model_path, lora_weights_path)
 
-    trainer = pl.Trainer(accelerator='auto', devices=1)
-    # prompt = "what is the result of 1+1"
+    is_log = config['test_settings']['is_log']
+    log_dir = config['test_settings']['log_dir']
+    trainer = pl.Trainer(accelerator='auto', devices=1, default_root_dir=log_dir, logger=is_log)
+    
+    prompt = "what is the result of 1+1?"
     # prompt = "Compute\n\\[\\frac{1}{\\cos^2 10^\\circ} + \\frac{1}{\\sin^2 20^\\circ} + \\frac{1}{\\sin^2 40^\\circ}.\\]"
-    prompt = """<s>[INST] <<SYS>>
-You are a helpful, respectful, and honest assistant. Always provide accurate information and if you're not sure about something, say so.
-<</SYS>>
+#     prompt = """<s>[INST] <<SYS>>
+# You are a helpful, respectful, and honest assistant. Always provide accurate information and if you're not sure about something, say so.
+# <</SYS>>
 
-Hello! [/INST]"""
+# Hello! [/INST]"""
     inputs = model.generator.tokenizer.encode_plus(prompt, return_tensors="pt")
     input_data = {'input_ids': inputs['input_ids'].squeeze(), 'attention_mask': inputs['attention_mask'].squeeze()}
 
@@ -61,7 +64,9 @@ Hello! [/INST]"""
 
     predictions = trainer.predict(model, dataloader)
 
-    print("Generated steps:")
+    print("Generated steps:(trimmed)")
+    print(predictions[0][len(prompt):])
+    print("Generated steps:(full)")
     print(predictions[0])
 
 if __name__ == "__main__":

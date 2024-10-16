@@ -62,8 +62,10 @@ class Generator(nn.Module):
         Returns:
             transformers.modeling_outputs.CausalLMOutputWithCrossAttentions: 模型输出
         """
-        return self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
 
+        # 调用模型进行前向传播
+        outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+        return outputs
     def set_inference_mode(self, inference_mode):
         """
         设置模型的推理模式

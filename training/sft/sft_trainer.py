@@ -29,13 +29,24 @@ class SFTTrainer(pl.LightningModule):
         self.log('val_loss', loss, on_epoch=True, prog_bar=True)
         return loss
 
+    def test_step(self, batch, batch_idx):
+        self.model.eval()
+        outputs = self.model(**batch)
+        loss = outputs.loss
+        self.log('test_loss', loss, on_epoch=True, prog_bar=True)
+        return loss
+
     def configure_optimizers(self):
-        optimizer = DeepSpeedCPUAdam(self.model.parameters(), 
-                                     lr=float(self.config['learning_rate']),
-                                     betas=(0.9, 0.999),
-                                     eps=1e-8,
-                                     weight_decay=0)
-        
+        # optimizer = DeepSpeedCPUAdam(self.model.parameters(), 
+        #                              lr=float(self.config['learning_rate']),
+        #                              betas=(0.9, 0.999),
+        #                              eps=1e-8,
+        #                              weight_decay=0)
+        optimizer = AdamW(self.model.parameters(), 
+                        lr=float(self.config['learning_rate']),
+                        betas=(0.9, 0.999),
+                        eps=1e-8,
+                        weight_decay=0)
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=self.config['warmup_steps'],

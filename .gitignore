@@ -47,7 +47,7 @@ Thumbs.db
 
 # Project specific
 models/checkpoints/*
-dataset/*
+dataset/prm800k/*
 outputs/*
 # Ignore lightning_logs directory
 lightning_logs/*
