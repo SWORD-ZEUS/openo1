@@ -25,7 +25,7 @@ class GeneratorModule(pl.LightningModule):
         self.generator.model.eval()
 
     def forward(self, input_ids, attention_mask):
-        return self.generator.model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=512)
+        return self.generator.model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=1024)
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> STEP_OUTPUT:
         outputs = self(batch['input_ids'], batch['attention_mask'])
@@ -37,7 +37,7 @@ def main():
         config = yaml.safe_load(file)
 
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
-    lora_weights_path = config.get('load_lora_weights_path', None)  # 可选的 LoRA 权重路径
+    lora_weights_path = config['test_settings'].get('load_lora_weights_path', None)  # 可选的 LoRA 权重路径
     print(f"Loading model from {model_path}")
     print(f"Loading LoRA weights from {lora_weights_path}")
 
@@ -47,8 +47,8 @@ def main():
     log_dir = config['test_settings']['log_dir']
     trainer = pl.Trainer(accelerator='auto', devices=1, default_root_dir=log_dir, logger=is_log)
     
-    prompt = "what is the result of 1+1?"
-    # prompt = "Compute\n\\[\\frac{1}{\\cos^2 10^\\circ} + \\frac{1}{\\sin^2 20^\\circ} + \\frac{1}{\\sin^2 40^\\circ}.\\]"
+    # prompt = "what is the result of 1+1?"
+    prompt = "Find the number of real solutions to $\\sin 6 \\pi x = x.$"
 #     prompt = """<s>[INST] <<SYS>>
 # You are a helpful, respectful, and honest assistant. Always provide accurate information and if you're not sure about something, say so.
 # <</SYS>>

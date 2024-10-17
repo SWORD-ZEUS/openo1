@@ -6,8 +6,7 @@ import torch
 class PRM800KDataset(Dataset):
     def __init__(self, data_path, tokenizer_name, max_length=512):
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.pad_token = "<|reserved_special_token_0|>"
         self.max_length = max_length
         self.data = self.load_data(data_path)
 
@@ -18,77 +17,58 @@ class PRM800KDataset(Dataset):
                 item = json.loads(line)
                 question = item['problem']
                 steps = item['steps']
-                data.extend(self.process_question_steps(question, steps))
+                data.append(self.process_question_steps(question, steps))
         return data
 
     def process_question_steps(self, question, steps):
-        processed_data = []
-        current_input = question
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant. You need to answer the question step by step."},
+            {"role": "user", "content": question}
+        ]
         for step in steps:
-            processed_data.append((current_input, step))
-            current_input = f"{current_input}\n{step}"
-        return processed_data
+            messages.append({"role": "assistant", "content": step})
+        return messages
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        input_text, thinking_step = self.data[idx]
+        messages = self.data[idx]
         
-        # 编码输入文本，不进行填充
-        encoded_input = self.tokenizer.encode_plus(
-            input_text,
-            add_special_tokens=False,  # 不添加特殊token
+        # 使用apply_chat_template格式化消息
+        formatted_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
+        
+        # 编码格式化后的文本
+        encoded = self.tokenizer.encode_plus(
+            formatted_text,
             max_length=self.max_length,
-            padding=False,  # 不进行填充
+            padding='max_length',
             truncation=True,
             return_tensors='pt'
         )
 
-        # 编码思考步骤，不进行填充
-        encoded_thinking_step = self.tokenizer.encode_plus(
-            thinking_step,
-            add_special_tokens=False,  # 不添加特殊token
-            max_length=self.max_length,
-            padding=False,  # 不进行填充
-            truncation=True,
-            return_tensors='pt'
-        )
+        input_ids = encoded['input_ids'].squeeze()
+        attention_mask = encoded['attention_mask'].squeeze()
 
+        # 创建labels，初始化为全-100
+        labels = torch.full_like(input_ids, -100)
 
-        input_ids = encoded_input['input_ids'].squeeze()
-        thinking_step_ids = encoded_thinking_step['input_ids'].squeeze()
-        # 添加错误检查
-        if isinstance(input_ids, torch.Tensor) and input_ids.dim() == 0:
-            print(f"problem: {input_text}")
-        if isinstance(thinking_step_ids, torch.Tensor) and thinking_step_ids.dim() == 0:
-            print(f"thinking_step: {thinking_step}")
+        # 查找所有assistant回复的开始和结束位置
+        start_pattern = torch.tensor([128006, 78191, 128007])
+        end_token = 128009
 
-
-        # 计算剩余空间
-        remaining_length = self.max_length - len(input_ids) - len(thinking_step_ids)
-
-        if remaining_length < 0:
-            # 如果总长度超过max_length，截断thinking_step
-            thinking_step_ids = thinking_step_ids[:remaining_length]
-        else:
-            # 否则，在thinking_step后面添加填充
-            thinking_step_ids = torch.cat([thinking_step_ids, torch.full((remaining_length,), self.tokenizer.pad_token_id)])
-
-        # 拼接input_ids和thinking_step_ids
-        combined_ids = torch.cat([input_ids, thinking_step_ids])
-
-        # 创建attention_mask
-        attention_mask = torch.ones_like(combined_ids)
-        attention_mask[combined_ids == self.tokenizer.pad_token_id] = 0
-
-        # 创建labels，将input部分和padding部分的label设为-100
-        labels = combined_ids.clone()
-        labels[:len(input_ids)] = -100  # 输入部分设为-100
-        labels[combined_ids == self.tokenizer.pad_token_id] = -100  # padding部分设为-100
+        # 在input_ids中查找开始模式
+        for i in range(len(input_ids) - 2):
+            if torch.all(input_ids[i:i+3] == start_pattern):
+                # 从这个位置开始查找结束标记
+                for j in range(i+3, len(input_ids)):
+                    if input_ids[j] == end_token:
+                        # 设置labels，注意不包括开始模式
+                        labels[i+3:j+1] = input_ids[i+3:j+1]
+                        break
 
         return {
-            'input_ids': combined_ids,
+            'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels
         }

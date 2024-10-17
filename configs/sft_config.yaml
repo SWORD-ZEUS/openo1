@@ -84,5 +84,6 @@ wandb:
 test_settings:
   is_log: false
   log_dir: "/storage/zhuangkai/data/openo1/tensorboard"
+  load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/1017195336/epoch=2-step=788.ckpt"
 
 
