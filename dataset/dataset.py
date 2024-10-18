@@ -21,8 +21,9 @@ class PRM800KDataset(Dataset):
         return data
 
     def process_question_steps(self, question, steps):
+        # TODO: 后续需要用新的system_prompt再sft训练一次
         messages = [
-            {"role": "system", "content": "You are a helpful assistant. You need to answer the question step by step."},
+            {"role": "system", "content": "You are a helpful assistant. For each question, provide only one step of the solution at a time. After giving each step, wait for the next prompt before continuing."},
             {"role": "user", "content": question}
         ]
         for step in steps:
