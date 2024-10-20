@@ -1,6 +1,6 @@
 # from transformers import LlamaForCausalLM, LlamaTokenizer
-# from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers import LlamaModel, LlamaTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import LlamaModel
 from transformers import modeling_outputs
 from peft import get_peft_model, LoraConfig, TaskType
 import torch
@@ -29,7 +29,8 @@ class RewardModel(nn.Module):
         """
         super().__init__()
         self.model = LlamaModel.from_pretrained(model_path, torch_dtype=torch.float16)
-        self.tokenizer = LlamaTokenizer.from_pretrained(model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        self.tokenizer.pad_token = "<|reserved_special_token_0|>"
 
         # # 设置填充标记
         # if self.tokenizer.pad_token is None:
@@ -96,8 +97,8 @@ class RewardModel(nn.Module):
         hidden_states = transformer_outputs[0]
         # get the last non-padding token in hidden states
         batch_size = input_ids.shape[0]
-        assert self.model.config.pad_token_id is not None, "The tokenizer does not have a padding token"
-        sequence_lengths = torch.eq(input_ids, self.model.config.pad_token_id).int().argmax(-1) - 1
+        assert self.tokenizer.pad_token is not None, "The tokenizer does not have a padding token"
+        sequence_lengths = torch.eq(input_ids, self.tokenizer.pad_token_id).int().argmax(-1) - 1
         pooled_hidden_states = hidden_states[torch.arange(batch_size, device=input_ids.device), sequence_lengths]
         scores = self.score(pooled_hidden_states)
         # compute loss
