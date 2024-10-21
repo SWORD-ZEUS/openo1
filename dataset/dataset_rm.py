@@ -16,31 +16,30 @@ class RewardModelDataset(Dataset):
             for line in f:
                 item = json.loads(line)
                 question = item['problem']
-                steps_ratings = item['steps_ratings']  # 假设数据中包含步骤和评分
-                data.append(self.process_question_steps_ratings(question, steps_ratings))
+                steps = item['steps']
+                data.extend(self.process_question_steps(question, steps))
         return data
 
-    def process_question_steps_ratings(self, question, steps_ratings):
+    def process_question_steps(self, question, steps):
+        data = []
         messages = [
             {"role": "system", "content": "You are a helpful assistant. For each question, provide only one step of the solution at a time. After giving each step, wait for the next prompt before continuing."},
             {"role": "user", "content": question}
         ]
-        ratings = []
-        for step, rating in steps_ratings:
+        for step, rating in steps:
             messages.append({"role": "assistant", "content": step})
-            ratings.append(rating)
-        return messages, ratings
+            data.append((messages, rating))
+        return data
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        messages, ratings = self.data[idx]
+        messages, rating = self.data[idx]
         
         # 使用apply_chat_template格式化消息
         formatted_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
         
-        # 编码格式化后的文本
         encoded = self.tokenizer.encode_plus(
             formatted_text,
             max_length=self.max_length,
@@ -51,12 +50,10 @@ class RewardModelDataset(Dataset):
 
         input_ids = encoded['input_ids'].squeeze()
         attention_mask = encoded['attention_mask'].squeeze()
-
-        # 将评分转换为张量
-        ratings_tensor = torch.tensor(ratings, dtype=torch.float)
+        rating_tensor = torch.tensor(rating, dtype=torch.float)
 
         return {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
-            'ratings': ratings_tensor
+            'labels': rating_tensor
         }
