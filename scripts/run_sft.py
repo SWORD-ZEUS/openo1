@@ -20,9 +20,7 @@ def main():
     with open("/zhuangkai/openo1/configs/sft_config.yaml", 'r') as file:
         config = yaml.safe_load(file)
     batch_size = config['batch_size_per_gpu']
-    gpus_per_node = config['gpus_per_node']
-    train_micro_batch_size_per_gpu = batch_size // gpus_per_node
-    config['deepspeed_config']['train_micro_batch_size_per_gpu'] = train_micro_batch_size_per_gpu
+    config['deepspeed_config']['train_micro_batch_size_per_gpu'] = batch_size
 
     # 设置 Wandb
     if os.environ["NODE_RANK"] == "0":
