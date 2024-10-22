@@ -9,7 +9,7 @@ warmup_steps: 100
 total_steps: 10000  # 根据数据集大小和 epoch 数调整
 max_length: 1024
 lora_r: 8
-gpus_per_node: 8
+gpus_per_node: 4
 lora_alpha: 32
 lora_dropout: 0.1
 val_interval: 0.1  # Validate every val_interval epoch
@@ -85,7 +85,8 @@ wandb:
 
 test_settings:
   is_log: false
-  log_dir: "/storage/zhuangkai/data/openo1/tensorboard"
+  log_dir: "/storage/zhuangkai/data/openo1/tensorboard/rm"
   load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/epoch=2-step=736.ckpt"
+  test_results_path: "/storage/zhuangkai/data/openo1/test_results/rm/test_results.json"
 
 
