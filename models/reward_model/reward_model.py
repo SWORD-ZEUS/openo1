@@ -41,7 +41,7 @@ class RewardModel(nn.Module):
         if not self.only_train_head:
             # 配置LoRA
             peft_config = LoraConfig(
-                task_type=TaskType.CAUSAL_LM,
+                task_type=TaskType.FEATURE_EXTRACTION,
                 inference_mode=not training,
                 r=lora_r,
                 lora_alpha=lora_alpha,
