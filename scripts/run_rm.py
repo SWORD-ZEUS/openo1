@@ -23,6 +23,9 @@ def main():
     config['deepspeed_config']['train_micro_batch_size_per_gpu'] = batch_size
     only_train_head = config['only_train_head']
     num_labels = config['num_labels']
+    lora_r = config['lora_r']
+    lora_alpha = config['lora_alpha']
+    lora_dropout = config['lora_dropout']
 
     # 设置 Wandb
     if os.environ["NODE_RANK"] == "0":
@@ -47,7 +50,7 @@ def main():
 
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
     print(f"Model path: {model_path}")
-    model = RewardModel(model_path, only_train_head, num_labels, training=True)
+    model = RewardModel(model_path, only_train_head, lora_r, lora_alpha, lora_dropout, num_labels, training=True)
 
     train_dataset = RewardModelDataset(config['train_data_path'], model_path, config['max_length'])
     val_dataset = RewardModelDataset(config['val_data_path'], model_path, config['max_length'])
