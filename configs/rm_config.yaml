@@ -16,7 +16,7 @@ val_interval: 0.1  # Validate every val_interval epoch
 weight_save_dir: "/storage/zhuangkai/data/openo1/weights/rm"
 train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution.jsonl"
 val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_gt_pre_generated_solution.jsonl"
-test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_gt_pre_generated_solution.jsonl"
+test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_short.jsonl"
 # checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 # load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 gradient_accumulation_steps: 4
@@ -86,7 +86,7 @@ wandb:
 test_settings:
   is_log: false
   log_dir: "/storage/zhuangkai/data/openo1/tensorboard/rm"
-  load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/epoch=2-step=736.ckpt"
+  load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/1021200336/epoch=1-step=16622.ckpt"
   test_results_path: "/storage/zhuangkai/data/openo1/test_results/rm/test_results.json"
 
 
