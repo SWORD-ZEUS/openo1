@@ -12,6 +12,18 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.generator.generator import Generator
 
+def process_state_dict(state_dict):
+    """处理状态字典的键，移除多余的 'model.model.' 前缀"""
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        # 移除 'model.model.' 前缀
+        if key.startswith('model.model.'):
+            new_key = key[len('model.model.'):]
+        else:
+            new_key = key
+        new_state_dict[new_key] = value
+    return new_state_dict
+
 class GeneratorModule(pl.LightningModule):
     def __init__(self, model_path, lora_weights_path=None):
         super().__init__()
@@ -20,8 +32,18 @@ class GeneratorModule(pl.LightningModule):
 
     def setup(self, stage=None):
         if self.lora_weights_path:
+            # 加载并处理权重
             client_sd = get_fp32_state_dict_from_zero_checkpoint(self.lora_weights_path)
-            self.generator.model.load_state_dict(client_sd, strict=False)
+            processed_sd = process_state_dict(client_sd)
+             
+            # 加载处理后的权重
+            try:
+                self.generator.model.load_state_dict(processed_sd, strict=True)
+                print("\n成功加载处理后的权重")
+            except Exception as e:
+                print(f"\n加载权重时出错: {str(e)}")
+                raise e
+                
         self.generator.model.eval()
 
     def forward(self, input_ids, attention_mask):
@@ -30,6 +52,7 @@ class GeneratorModule(pl.LightningModule):
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> STEP_OUTPUT:
         outputs = self(batch['input_ids'], batch['attention_mask'])
         return self.generator.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
 
 def main():
     # 加载配置
@@ -42,7 +65,7 @@ def main():
     print(f"Loading LoRA weights from {lora_weights_path}")
 
     model = GeneratorModule(model_path, lora_weights_path)
-
+    
     is_log = config['test_settings']['is_log']
     log_dir = config['test_settings']['log_dir']
     trainer = pl.Trainer(accelerator='auto', devices=1, default_root_dir=log_dir, logger=is_log)
@@ -51,6 +74,7 @@ def main():
     messages = [
         {"role": "system", "content": "You are a helpful assistant. For each question, provide only one step of the solution at a time. After giving each step, wait for the next prompt before continuing."},
         {"role": "user", "content": "Simplify: $\\frac{\\sqrt{2.5^2-0.7^2}}{2.7-2.5}$."},
+        {"role": "assistant", "content": "I notice that the numerator is a difference of squares, so I can factor it as $(2.5-0.7)(2.5+0.7)$."},
 #         {"role": "assistant", "content": """To simplify the given expression, we need to start by evaluating the numerator, which involves finding the difference of squares. 
 
 # Step 1: Evaluate the squares in the numerator: $2.5^2 = 6.25$ and $0.7^2 = 0.49$."""},
