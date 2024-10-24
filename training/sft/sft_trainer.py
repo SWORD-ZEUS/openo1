@@ -42,15 +42,20 @@ class SFTTrainer(pl.LightningModule):
         #                              betas=(0.9, 0.999),
         #                              eps=1e-8,
         #                              weight_decay=0)
+        # 计算总的训练步数
+        total_samples = len(self.train_dataset)  # 训练集的样本数量
+        total_steps = self.config['num_epochs'] * (total_samples // self.config['batch_size_per_gpu']*self.config['gpus_per_node'])
+
         optimizer = AdamW(self.model.parameters(), 
-                        lr=float(self.config['learning_rate']),
-                        betas=(0.9, 0.999),
-                        eps=1e-8,
-                        weight_decay=0)
+                          lr=float(self.config['learning_rate']),
+                          betas=(0.9, 0.999),
+                          eps=1e-8,
+                          weight_decay=0)
+        
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=self.config['warmup_steps'],
-            num_training_steps=self.config['total_steps']
+            num_training_steps=total_steps  # 使用计算得出的total_steps
         )
         
         return {
