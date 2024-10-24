@@ -1,3 +1,4 @@
+#运行：torchrun --nproc_per_node={gpus_per_node} tests/test_rm.py 两个参数：--only_train_head 和 --load_trained_weights
 import sys
 import os
 import yaml
@@ -112,21 +113,22 @@ def process_state_dict(state_dict):
 def main():
     parser = argparse.ArgumentParser(description="Test Reward Model")
     parser.add_argument("--config", type=str, default="/zhuangkai/openo1/configs/rm_config.yaml", help="Path to config file")
-    parser.add_argument("--load_lora", action="store_true", help="Whether to load LoRA weights")
+    parser.add_argument("--load_trained_weights", action="store_true", help="Whether to load trained weights")
+    parser.add_argument("--only_train_head", action="store_true", help="Only train the regression head")
     args = parser.parse_args()
 
     config = load_config(args.config)
 
     # 加载模型
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
-    model = RewardModel(model_path, only_train_head=not args.load_lora, num_labels=config['num_labels'], training=False)
+    model = RewardModel(model_path, only_train_head=args.only_train_head, num_labels=config['num_labels'], training=False)
     model = model.float()
 
-    # 加载LoRA权重（如果指定）
-    if args.load_lora:
-        lora_weights_path = config['test_settings']['load_lora_weights_path']
-        print(f"Loading LoRA weights from {lora_weights_path}")
-        client_sd = get_fp32_state_dict_from_zero_checkpoint(lora_weights_path)
+    # 加载训练权重（如果指定）
+    if args.load_trained_weights:
+        trained_weights_path = config['test_settings']['load_trained_weights_path']
+        print(f"Loading trained weights from {trained_weights_path}")
+        client_sd = get_fp32_state_dict_from_zero_checkpoint(trained_weights_path)
         processed_sd = process_state_dict(client_sd)
         # 尝试加载处理后的权重
         try:
