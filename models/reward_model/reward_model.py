@@ -53,7 +53,7 @@ class RewardModel(nn.Module):
         else:
             for param in self.model.parameters():
                 param.requires_grad = False
-        
+
         self.score = nn.Linear(self.model.config.hidden_size, num_labels, bias=True)
         self.task = "regression" if num_labels == 1 else "classification"
         if self.task == "classification":

@@ -25,6 +25,7 @@ class Generator(nn.Module):
         #     self.tokenizer.pad_token = self.tokenizer.eos_token
 
         # 配置LoRA
+        # 注意每次初始化模型时，都会重新配置LoRA，LoRA（LoRA）的权重也会重新初始化
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
             inference_mode=not training,

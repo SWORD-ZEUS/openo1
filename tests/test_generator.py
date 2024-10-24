@@ -1,3 +1,4 @@
+#运行：python tests/test_generator.py
 import sys
 import os
 import torch
