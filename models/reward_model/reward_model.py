@@ -37,6 +37,7 @@ class RewardModel(nn.Module):
         #     self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.only_train_head = only_train_head
+        self.num_labels = num_labels
         # Train LoRA and regression head
         if not self.only_train_head:
             # 配置LoRA
@@ -106,7 +107,8 @@ class RewardModel(nn.Module):
         if self.task == "regression":
             loss = self.loss_fn(scores.squeeze(), labels.squeeze())
         elif self.task == "classification":
-            loss = self.loss_fn(scores.view(-1, self.num_labels), labels.view(-1))
+            # loss = self.loss_fn(scores.view(-1, self.num_labels), labels.view(-1))
+            loss = self.loss_fn(scores.view(-1, self.num_labels).float(), labels.view(-1).long())
 
         return modeling_outputs.SequenceClassifierOutputWithPast(
             loss=loss,
