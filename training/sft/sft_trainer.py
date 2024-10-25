@@ -44,7 +44,7 @@ class SFTTrainer(pl.LightningModule):
         #                              weight_decay=0)
         # 计算总的训练步数
         total_samples = len(self.train_dataset)  # 训练集的样本数量
-        total_steps = self.config['num_epochs'] * (total_samples // self.config['batch_size_per_gpu']*self.config['gpus_per_node'])
+        total_steps = self.config['num_epochs'] * (total_samples // (self.config['batch_size_per_gpu']*self.config['gpus_per_node']))
 
         optimizer = AdamW(self.model.parameters(), 
                           lr=float(self.config['learning_rate']),
