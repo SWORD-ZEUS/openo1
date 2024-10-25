@@ -22,6 +22,8 @@ class RewardModelTester(pl.LightningModule):
         self.model = model
         self.config = config
         self.model.eval()
+        self.task = "classification" if config.get('num_labels', 1) > 1 else "regression"
+   
 
     def forward(self, input_ids, attention_mask, labels=None):
         return self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
@@ -31,8 +33,15 @@ class RewardModelTester(pl.LightningModule):
         attention_mask = batch['attention_mask'].float()
         labels = batch['labels'].float()
 
-        outputs = self(input_ids=input_ids, attention_mask=attention_mask,labels=labels)
-        predictions = outputs.logits.squeeze()
+        outputs = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+        logits = outputs.logits
+        
+        if self.task == "classification":
+            # 对分类任务使用 softmax
+            predictions = torch.softmax(logits, dim=-1)
+        else:
+            # 回归任务保持不变
+            predictions = logits.squeeze()
 
         # 确保 predictions 是至少 1 维的
         if predictions.ndim == 0:
@@ -44,7 +53,7 @@ class RewardModelTester(pl.LightningModule):
         }
 
     def on_predict_epoch_end(self):
-        from sklearn.metrics import mean_squared_error, r2_score
+        from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, f1_score, precision_score, recall_score
         
         # 从 trainer 中获取预测结果
         predictions = self.trainer.predict_loop.predictions
@@ -71,20 +80,47 @@ class RewardModelTester(pl.LightningModule):
         all_predictions = torch.stack(all_predictions)
         all_labels = torch.stack(all_labels)
         
-        # 计算指标
-        mse = mean_squared_error(all_labels.numpy(), all_predictions.numpy())
-        r2 = r2_score(all_labels.numpy(), all_predictions.numpy())
-
-        print(f"Mean Squared Error: {mse}")
-        print(f"R2 Score: {r2}")
-
-        # 保存结果
-        results = {
-            "mse": float(mse),
-            "r2": float(r2),
-            "predictions": all_predictions.tolist(),
-            "labels": all_labels.tolist()
-        }
+        # 根据任务类型计算不同的指标
+        results = {}
+        
+        if self.task == "classification":
+            # 对于分类任务，将预测转换为类别
+            pred_classes = torch.argmax(all_predictions, dim=-1).numpy()
+            true_labels = all_labels.numpy()
+            
+            # 计算分类指标
+            accuracy = accuracy_score(true_labels, pred_classes)
+            f1 = f1_score(true_labels, pred_classes, average='weighted')
+            precision = precision_score(true_labels, pred_classes, average='weighted')
+            recall = recall_score(true_labels, pred_classes, average='weighted')
+            
+            print(f"Accuracy: {accuracy}")
+            print(f"F1 Score: {f1}")
+            print(f"Precision: {precision}")
+            print(f"Recall: {recall}")
+            
+            results = {
+                "accuracy": float(accuracy),
+                "f1": float(f1),
+                "precision": float(precision),
+                "recall": float(recall),
+                "predictions": pred_classes.tolist(),
+                "labels": true_labels.tolist()
+            }
+        else:
+            # 对于回归任务，保持原有的指标计算
+            mse = mean_squared_error(all_labels.numpy(), all_predictions.numpy())
+            r2 = r2_score(all_labels.numpy(), all_predictions.numpy())
+            
+            print(f"Mean Squared Error: {mse}")
+            print(f"R2 Score: {r2}")
+            
+            results = {
+                "mse": float(mse),
+                "r2": float(r2),
+                "predictions": all_predictions.tolist(),
+                "labels": all_labels.tolist()
+            }
 
         # 只在主进程上保存结果
         if self.trainer.is_global_zero:
@@ -142,7 +178,8 @@ def main():
     rm_tester = RewardModelTester(model, config)
 
     # 加载测试数据集
-    test_dataset = RewardModelDataset(config['test_data_path'], model_path, config['max_length'])
+    task = rm_tester.task
+    test_dataset = RewardModelDataset(config['test_data_path'], model_path, config['max_length'], task)
     test_dataloader = DataLoader(test_dataset, batch_size=config['batch_size_per_gpu'], num_workers=4)
 
     # 设置 logger

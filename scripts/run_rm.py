@@ -15,10 +15,11 @@ from dataset.data_module import PRM800KDataModule
 from training.rm.rm_trainer import RMTrainer
 import time
 
-def main():
+def main(args):
     # 加载配置
-    with open("/zhuangkai/openo1/configs/rm_config.yaml", 'r') as file:
+    with open(args.config, 'r') as file:
         config = yaml.safe_load(file)
+    
     batch_size = config['batch_size_per_gpu']
     config['deepspeed_config']['train_micro_batch_size_per_gpu'] = batch_size
     only_train_head = config['only_train_head']
@@ -26,6 +27,10 @@ def main():
     lora_r = config['lora_r']
     lora_alpha = config['lora_alpha']
     lora_dropout = config['lora_dropout']
+    if num_labels == 1:
+        task = "regression"
+    else:
+        task = "classification"
 
     # 设置 Wandb
     if os.environ["NODE_RANK"] == "0":
@@ -52,8 +57,8 @@ def main():
     print(f"Model path: {model_path}")
     model = RewardModel(model_path, only_train_head, lora_r, lora_alpha, lora_dropout, num_labels, training=True)
 
-    train_dataset = RewardModelDataset(config['train_data_path'], model_path, config['max_length'])
-    val_dataset = RewardModelDataset(config['val_data_path'], model_path, config['max_length'])
+    train_dataset = RewardModelDataset(config['train_data_path'], model_path, config['max_length'], task)
+    val_dataset = RewardModelDataset(config['val_data_path'], model_path, config['max_length'], task)
 
     data_module = PRM800KDataModule(train_dataset, val_dataset, config['batch_size_per_gpu'])
 
@@ -103,4 +108,8 @@ def main():
     pl_trainer.fit(trainer, datamodule=data_module)
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    args = argparse.ArgumentParser()
+    args.add_argument("--config", type=str, default="/zhuangkai/openo1/configs/rm_config_classification.yaml")
+    args = args.parse_args()
+    main(args)
