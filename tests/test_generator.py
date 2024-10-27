@@ -26,15 +26,18 @@ def process_state_dict(state_dict):
     return new_state_dict
 
 class GeneratorModule(pl.LightningModule):
-    def __init__(self, model_path, lora_weights_path=None):
+    def __init__(self, config):
         super().__init__()
-        self.generator = Generator(model_path, training=False)
-        self.lora_weights_path = lora_weights_path
+        config['fine_tuning']['method'] = config['test_settings']['fine_tuning']['method']
+        config['fine_tuning']['lora_config'] = config['test_settings']['fine_tuning']['lora_config']
+        config['fine_tuning']['adapter_config'] = config['test_settings']['fine_tuning']['adapter_config']
+        self.generator = Generator(config, training=False)
+        self.weights_path = config['test_settings']['load_weights_path']
 
     def setup(self, stage=None):
-        if self.lora_weights_path:
+        if self.weights_path:
             # 加载并处理权重
-            client_sd = get_fp32_state_dict_from_zero_checkpoint(self.lora_weights_path)
+            client_sd = get_fp32_state_dict_from_zero_checkpoint(self.weights_path)
             processed_sd = process_state_dict(client_sd)
              
             # 加载处理后的权重
@@ -55,17 +58,18 @@ class GeneratorModule(pl.LightningModule):
         return self.generator.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 
-def main():
+def main(config_path):
     # 加载配置
-    with open('configs/sft_config.yaml', 'r') as file:
+    with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
 
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
-    lora_weights_path = config['test_settings'].get('load_lora_weights_path', None)  # 可选的 LoRA 权重路径
+    config['model_path'] = model_path
+    weights_path = config['test_settings'].get('load_weights_path', None)  # 可选的 LoRA 权重路径
     print(f"Loading model from {model_path}")
-    print(f"Loading LoRA weights from {lora_weights_path}")
+    print(f"Loading weights from {weights_path}")
 
-    model = GeneratorModule(model_path, lora_weights_path)
+    model = GeneratorModule(config)
     
     is_log = config['test_settings']['is_log']
     log_dir = config['test_settings']['log_dir']
@@ -75,7 +79,12 @@ def main():
     messages = [
         {"role": "system", "content": "You are a helpful assistant. For each question, provide only one step of the solution at a time. After giving each step, wait for the next prompt before continuing."},
         {"role": "user", "content": "Simplify: $\\frac{\\sqrt{2.5^2-0.7^2}}{2.7-2.5}$."},
-        {"role": "assistant", "content": "I notice that the numerator is a difference of squares, so I can factor it as $(2.5-0.7)(2.5+0.7)$."},
+        {"role": "assistant", "content": """To simplify the expression, let's first simplify the numerator and denominator separately.
+
+Step 1: Simplify the numerator, $\sqrt{2.5^2-0.7^2}$, by squaring the numbers inside the square root. 
+
+$2.5^2 = 6.25$ and $0.7^2 = 0.49$."""},
+        # {"role": "assistant", "content": "I notice that the numerator is a difference of squares, so I can factor it as $(2.5-0.7)(2.5+0.7)$."},
 #         {"role": "assistant", "content": """To simplify the given expression, we need to start by evaluating the numerator, which involves finding the difference of squares. 
 
 # Step 1: Evaluate the squares in the numerator: $2.5^2 = 6.25$ and $0.7^2 = 0.49$."""},
@@ -110,4 +119,8 @@ def main():
     print(predictions[0])
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, default='/zhuangkai/openo1/configs/sft_config.yaml')
+    args = parser.parse_args()
+    main(args.config)
