@@ -44,8 +44,9 @@ def main():
             print("Initialize TensorBoard Logger successfully")
 
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
+    config['model_path'] = model_path
     print(f"Model path: {model_path}")
-    model = Generator(model_path, training=True)
+    model = Generator(config, training=True)
 
     train_dataset = PRM800KDataset(config['train_data_path'], model_path, config['max_length'])
     val_dataset = PRM800KDataset(config['val_data_path'], model_path, config['max_length'])

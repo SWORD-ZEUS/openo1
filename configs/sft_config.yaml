@@ -2,16 +2,13 @@
 
 download_model_dir: "/storage/zhuangkai/data/openo1/download_model_weights"
 model_name: "Meta-Llama-3.1-8B-Instruct"  # 指向新的模型路径
-learning_rate: 5.0e-5
+learning_rate: 5.0e-6
 batch_size_per_gpu: 4
 num_epochs: 3
 warmup_steps: 100
 total_steps: 10000  # 根据数据集大小和 epoch 数调整
 max_length: 1024
-lora_r: 8
 gpus_per_node: 4
-lora_alpha: 32
-lora_dropout: 0.1
 val_interval: 0.1  # Validate every val_interval epoch
 weight_save_dir: "/storage/zhuangkai/data/openo1/weights/sft"
 train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/sft/phase2_train_gt_pre_generated_solution_to_step_list.jsonl"
@@ -86,4 +83,15 @@ test_settings:
   log_dir: "/storage/zhuangkai/data/openo1/tensorboard"
   load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/1017230728/epoch=2-step=736.ckpt"
 
-
+fine_tuning:
+  method: "adapter"  # 可选值: "lora" 或 "adapter"
+  # LoRA 相关配置
+  lora_config:
+    r: 8
+    alpha: 32
+    dropout: 0.1
+  # Adapter 相关配置
+  adapter_config:
+    hidden_size: 64
+    adapter_dropout: 0.1
+    adapter_layers: [0, 4, 8, 12, 16, 20, 24, 28]  # 指定要添加adapter的层
