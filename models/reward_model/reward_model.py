@@ -55,7 +55,13 @@ class RewardModel(nn.Module):
             for param in self.model.parameters():
                 param.requires_grad = False
 
-        self.score = nn.Linear(self.model.config.hidden_size, num_labels, bias=True)
+        self.score = nn.Sequential(
+            nn.Linear(self.model.config.hidden_size, self.model.config.hidden_size // 8, bias=True),
+            nn.GELU(),
+            nn.Linear(self.model.config.hidden_size // 8, self.model.config.hidden_size // 64, bias=True),
+            nn.GELU(),
+            nn.Linear(self.model.config.hidden_size // 64, num_labels, bias=True)
+        )
         self.task = "regression" if num_labels == 1 else "classification"
         if self.task == "classification":
             self.loss_fn = nn.CrossEntropyLoss()
@@ -108,7 +114,7 @@ class RewardModel(nn.Module):
             loss = self.loss_fn(scores.squeeze(), labels.squeeze())
         elif self.task == "classification":
             # loss = self.loss_fn(scores.view(-1, self.num_labels), labels.view(-1))
-            loss = self.loss_fn(scores.view(-1, self.num_labels).float(), labels.view(-1).long())
+            loss = self.loss_fn(scores.view(-1, self.num_labels).float(), labels.long())
 
         return modeling_outputs.SequenceClassifierOutputWithPast(
             loss=loss,
