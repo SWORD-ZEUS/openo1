@@ -12,18 +12,7 @@ from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoin
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.generator.generator import Generator
-
-def process_state_dict(state_dict):
-    """处理状态字典的键，移除多余的 'model.model.' 前缀"""
-    new_state_dict = {}
-    for key, value in state_dict.items():
-        # 移除 'model.model.' 前缀
-        if key.startswith('model.model.'):
-            new_key = key[len('model.model.'):]
-        else:
-            new_key = key
-        new_state_dict[new_key] = value
-    return new_state_dict
+from utils.process_state_dict import process_state_dict
 
 class GeneratorModule(pl.LightningModule):
     def __init__(self, config):
@@ -42,13 +31,13 @@ class GeneratorModule(pl.LightningModule):
              
             # 加载处理后的权重
             try:
-                self.generator.model.load_state_dict(processed_sd, strict=True)
+                self.generator.load_state_dict(processed_sd, strict=True)
                 print("\n成功加载处理后的权重")
             except Exception as e:
                 print(f"\n加载权重时出错: {str(e)}")
                 raise e
                 
-        self.generator.model.eval()
+        self.generator.eval()
 
     def forward(self, input_ids, attention_mask):
         return self.generator.model.generate(input_ids=input_ids, attention_mask=attention_mask, max_length=1024)
