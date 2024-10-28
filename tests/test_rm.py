@@ -14,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.reward_model.reward_model import RewardModel
 from dataset.dataset_rm import RewardModelDataset
+from utils.process_state_dict import process_state_dict
 import time
 
 class RewardModelTester(pl.LightningModule):
@@ -134,17 +135,6 @@ def load_config(config_path):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
-def process_state_dict(state_dict):
-    """处理状态字典的键，移除多余的 'model.' 前缀"""
-    new_state_dict = {}
-    for key, value in state_dict.items():
-        # 如果键以 'model.' 开头，只移除第一个 'model.'
-        if key.startswith('model.'):
-            new_key = key[len('model.'):]
-        else:
-            new_key = key
-        new_state_dict[new_key] = value
-    return new_state_dict
 
 def main():
     parser = argparse.ArgumentParser(description="Test Reward Model")
