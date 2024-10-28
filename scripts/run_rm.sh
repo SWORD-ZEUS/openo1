@@ -22,7 +22,7 @@ if [ -z "$GPUS_PER_NODE" ]; then
     echo "警告：无法从配置文件中读取gpus_per_node，使用默认值2"
     GPUS_PER_NODE=2
 fi
-
+echo "使用配置文件: $CONFIG_FILE"
 # 设置其他变量
 NUM_NODES=1
 export NODE_RANK=0
@@ -38,4 +38,5 @@ torchrun \
     --node_rank=$NODE_RANK \
     --master_addr=$MASTER_ADDR \
     --master_port=$MASTER_PORT \
-    /zhuangkai/openo1/scripts/run_rm.py
+    /zhuangkai/openo1/scripts/run_rm.py \
+    --config $CONFIG_FILE

@@ -40,6 +40,7 @@ class RewardModel(nn.Module):
         self.only_train_head = self.config['fine_tuning'].get('only_train_head', False)
         self.num_labels = self.config['fine_tuning'].get('num_labels', 3)
         if self.only_train_head:
+            print("Only train head")
             # only train the linear head
             self.peft_method = None
             for param in self.model.parameters():
@@ -48,9 +49,11 @@ class RewardModel(nn.Module):
             self.peft_method = self.config['fine_tuning'].get('method', 'adapter')
             if self.peft_method == 'adapter':
                 # using adapter
+                print("Using adapter")
                 self._init_adapter()
             elif self.peft_method == 'lora':
                 # using lora
+                print("Using lora")
                 self._init_lora(training)
             else:
                 raise ValueError(f"Unsupported fine-tuning method: {self.peft_method}")
@@ -60,8 +63,10 @@ class RewardModel(nn.Module):
         self.score = nn.Linear(self.model.config.hidden_size, self.num_labels, bias=True)
         self.task = "regression" if self.num_labels == 1 else "classification"
         if self.task == "classification":
+            print("Classification task")
             self.loss_fn = nn.CrossEntropyLoss()
         else:
+            print("Regression task")
             self.loss_fn = nn.MSELoss()
     
     def _init_adapter(self):
