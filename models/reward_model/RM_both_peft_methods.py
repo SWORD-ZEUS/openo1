@@ -75,7 +75,7 @@ class RewardModelUsingAdapter(nn.Module):
         adapter_layers = adapter_config['adapter_layers']
 
         # add adapter to layers specified in 'adapter_layers'
-        for i, layer in enumerate(self.model.model.layers):
+        for i, layer in enumerate(self.model.layers):
             if i in adapter_layers:
                 adapter = Adapter(hidden_size, adapter_size, adapter_dropout)
                 layer.adapter = adapter
@@ -137,7 +137,7 @@ class RewardModelUsingAdapter(nn.Module):
             )
 
             # prepare input embeddings
-            inputs_embeds = self.model.model.embed_tokens(input_ids)
+            inputs_embeds = self.model.embed_tokens(input_ids)
             hidden_states = inputs_embeds
 
             # prepare position ids
@@ -146,10 +146,10 @@ class RewardModelUsingAdapter(nn.Module):
                     sequence_length,
                     dtype=torch.long,
                     device=device
-                ).unsqueeze(0).expand_as(input_ids.shape[0], -1)
+                ).unsqueeze(0).expand(input_ids.shape[0], -1)
             
             # forward through the model
-            for i, layer in enumerate(self.model.model.layers):
+            for i, layer in enumerate(self.model.layers):
                 layer_outputs = layer(
                     hidden_states,
                     attention_mask=attention_mask,
@@ -160,7 +160,7 @@ class RewardModelUsingAdapter(nn.Module):
                 hidden_states = layer_outputs[0]
                 if hasattr(layer, 'adapter'):
                     hidden_states = layer.adapter(hidden_states)
-            hidden_states = self.model.model.norm(hidden_states)
+            hidden_states = self.model.norm(hidden_states)
         else:
             # forward with LoRA or only train head
             transformer_outputs = self.model(
@@ -187,9 +187,9 @@ class RewardModelUsingAdapter(nn.Module):
         return modeling_outputs.SequenceClassifierOutputWithPast(
             loss=loss,
             logits=scores,
-            past_key_values=transformer_outputs.past_key_values,
-            hidden_states=transformer_outputs.hidden_states,
-            attentions=transformer_outputs.attentions,
+            past_key_values=None,
+            hidden_states=hidden_states,
+            attentions=None,
         )
 
     
