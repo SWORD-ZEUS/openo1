@@ -25,7 +25,7 @@ class RMTrainer(pl.LightningModule):
             on_step=True, 
             on_epoch=True, 
             prog_bar=True, 
-            sync_dist=True
+            sync_dist=True,
         )
         return loss
 
@@ -46,7 +46,13 @@ class RMTrainer(pl.LightningModule):
         self.model.eval()
         outputs = self.model(**batch)
         loss = outputs.loss
-        self.log('test_loss', loss, on_epoch=True, prog_bar=True)
+        self.log(
+            'test_loss', 
+            loss, 
+            on_epoch=True, 
+            prog_bar=True, 
+            sync_dist=True
+        )
         return loss
 
     def configure_optimizers(self):

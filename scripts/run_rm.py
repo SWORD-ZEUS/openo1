@@ -22,11 +22,7 @@ def main(args):
     
     batch_size = config['batch_size_per_gpu']
     config['deepspeed_config']['train_micro_batch_size_per_gpu'] = batch_size
-    only_train_head = config['only_train_head']
-    num_labels = config['num_labels']
-    lora_r = config['lora_r']
-    lora_alpha = config['lora_alpha']
-    lora_dropout = config['lora_dropout']
+    num_labels = config['fine_tuning']['num_labels']
     if num_labels == 1:
         task = "regression"
     else:
@@ -54,56 +50,51 @@ def main(args):
             print("Initialize TensorBoard Logger successfully")
 
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
+    config['model_path'] = model_path
     print(f"Model path: {model_path}")
-    model = RewardModel(model_path, only_train_head, lora_r, lora_alpha, lora_dropout, num_labels, training=True)
+    model = RewardModel(config, training=True)
 
     train_dataset = RewardModelDataset(config['train_data_path'], model_path, config['max_length'], task)
     val_dataset = RewardModelDataset(config['val_data_path'], model_path, config['max_length'], task)
 
     data_module = PRM800KDataModule(train_dataset, val_dataset, config['batch_size_per_gpu'])
 
-    
-    trainer = RMTrainer(model, train_dataset, val_dataset, config)
     strategy = DeepSpeedStrategy(config=config['deepspeed_config'])
 
     # strategy = DeepSpeedStrategy(stage=3, offload_optimizer=True, offload_parameters=True)
-    checkpoint_path = getattr(config, 'checkpoint_path', None)
+    checkpoint_path = config.get('checkpoint_path', None)
+    print(f"checkpoint_path: {checkpoint_path}")
     if checkpoint_path:
         print(f"Loading model from {checkpoint_path}")
-        pl_trainer = pl.Trainer(
-            resume_from_checkpoint=checkpoint_path,
-            max_epochs=config['num_epochs'],
-            devices=-1,
-            accelerator="gpu",
-            strategy=strategy,
-            precision=16,
-            accumulate_grad_batches=config['gradient_accumulation_steps'],
-            val_check_interval=config['val_interval'],
-            logger=logger,
-            callbacks=[pl.callbacks.ModelCheckpoint(
-                dirpath=config['weight_save_dir'], 
-                save_top_k=1, 
-                monitor="val_loss",
-                save_last=True,
-            )]
+        # 使用 load_from_checkpoint 方法加载检查点
+        from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
+        client_sd = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
+        trainer = RMTrainer(
+            model=model,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            config=config,
         )
+        trainer.load_state_dict(client_sd, strict=True)
     else:
-        pl_trainer = pl.Trainer(
-            max_epochs=config['num_epochs'],
-            devices=-1,  # 使用所有可用的 GPU
-            accelerator="gpu",
-            strategy=strategy,
-            precision=16,  # Use mixed precision
-            accumulate_grad_batches=config['gradient_accumulation_steps'],
-            val_check_interval=config['val_interval'],
-            logger=logger,
-            callbacks=[pl.callbacks.ModelCheckpoint(
-                dirpath=os.path.join(config['weight_save_dir'], time.strftime('%m%d%H%M%S')), 
-                save_top_k=1, 
-                monitor="val_loss",
-                save_last=True,
-                )]
-        )
+        trainer = RMTrainer(model, train_dataset, val_dataset, config)
+
+    pl_trainer = pl.Trainer(
+        max_epochs=config['num_epochs'],
+        devices=-1,  # 使用所有可用的 GPU
+        accelerator="gpu",
+        strategy=strategy,
+        precision=16,  # Use mixed precision
+        accumulate_grad_batches=config['gradient_accumulation_steps'],
+        val_check_interval=config['val_interval'],
+        logger=logger,
+        callbacks=[pl.callbacks.ModelCheckpoint(
+            dirpath=os.path.join(config['weight_save_dir'], time.strftime('%m%d%H%M%S')), 
+            save_top_k=1, 
+            monitor="val_loss",
+            save_last=True,
+            )]
+    )
 
     pl_trainer.fit(trainer, datamodule=data_module)
 
