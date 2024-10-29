@@ -108,6 +108,8 @@ class RewardModel(nn.Module):
                 attention_mask,
                 labels=None,
                 position_ids=None,
+                step_start_idx=None,
+                step_end_idx=None,
                 **kwargs):
         """
         模型前向传播
@@ -117,6 +119,8 @@ class RewardModel(nn.Module):
             attention_mask (torch.Tensor): 注意力掩码
             labels (torch.Tensor, optional): 标签 (可选)
             position_ids (torch.Tensor, optional): 位置编码 (可选)
+            step_start_idx (int, optional): 最后一个 step 的起始索引 (可选)
+            step_end_idx (int, optional): 最后一个 step 的结束索引 (可选)
         
         Returns:
             transformers.modeling_outputs.SequenceClassifierOutputWithPast: 模型输出
@@ -167,50 +171,83 @@ class RewardModel(nn.Module):
                     hidden_states = layer.adapter(hidden_states)
             hidden_states = self.model.model.norm(hidden_states)
 
-            # get logits from hidden states
-            logits = self.model.score(hidden_states)
-
-            # get batch size
-            batch_size = input_ids.shape[0]
-
-            # get sequence lengths for pooling
-            self.model.config.pad_token_id = self.tokenizer.pad_token_id
-            print(f"Model pad token id: {self.model.config.pad_token_id}")
-            print(f"Batch size: {batch_size}")
-            if self.model.config.pad_token_id is None and batch_size != 1:
-                raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
-            if self.model.config.pad_token_id is None:
-                sequence_lengths = -1
+            # 获取最后一个 step 的特征向量
+            if step_start_idx is not None and step_end_idx is not None:
+                batch_size = input_ids.shape[0]
+                # 获取每个样本中最后一个 step 的特征向量并平均
+                step_hidden_states = []
+                for i in range(batch_size):
+                    step_features = hidden_states[i, step_start_idx[i]:step_end_idx[i], :]
+                    step_hidden_states.append(step_features.mean(dim=0))
+                step_hidden_states = torch.stack(step_hidden_states)
+                logits = self.model.score(step_hidden_states)
             else:
+                # 如果没有提供 step 索引，使用默认的序列长度计算方式
                 sequence_lengths = torch.eq(input_ids, self.model.config.pad_token_id).int().argmax(-1) - 1
                 sequence_lengths = sequence_lengths % input_ids.shape[-1]
-                sequence_lengths = sequence_lengths.to(logits.device)
-
-            # pool logits at sequence lengths
-            scores = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+                batch_size = input_ids.shape[0]
+                logits = self.model.score(hidden_states)
+                logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
 
             # compute loss if labels provided
             loss = None
             if labels is not None:
-                config = {
-                    "num_labels": self.num_labels,
-                    "problem_type": self.task,
-                }
-                loss = self.model.loss_function(logits=logits, labels=labels, pooled_logits=scores, config=config)
+                if self.task == "classification":
+                    loss = self.loss_fn(logits, labels)
+                else:
+                    loss = self.loss_fn(logits.squeeze(), labels.squeeze())
+
             return_dict = modeling_outputs.SequenceClassifierOutputWithPast(
                 loss=loss,
-                logits=scores,
+                logits=logits,
                 past_key_values=None,
                 hidden_states=hidden_states,
                 attentions=None,
             )
         else:
             # forward with LoRA or only train head
-            return_dict = self.model(
+            outputs = self.model.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                labels=labels
+                output_hidden_states=True  # 确保输出 hidden states
+            )
+            
+            # 获取最后一层的 hidden states
+            hidden_states = outputs.hidden_states[-1]
+            
+            # 获取最后一个 step 的特征向量
+            if step_start_idx is not None and step_end_idx is not None:
+                batch_size = input_ids.shape[0]
+                # 获取每个样本中最后一个 step 的特征向量并平均
+                step_hidden_states = []
+                for i in range(batch_size):
+                    step_features = hidden_states[i, step_start_idx[i]:step_end_idx[i], :]
+                    step_hidden_states.append(step_features.mean(dim=0))
+                step_hidden_states = torch.stack(step_hidden_states)
+                logits = self.model.score(step_hidden_states)
+            else:
+                # 如果没有提供 step 索引，使用默认的序列长度计算方式
+                sequence_lengths = torch.eq(input_ids, self.model.config.pad_token_id).int().argmax(-1) - 1
+                sequence_lengths = sequence_lengths % input_ids.shape[-1]
+                batch_size = input_ids.shape[0]
+                logits = self.model.score(hidden_states)
+                logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+
+            # 计算损失
+            loss = None
+            if labels is not None:
+                if self.task == "classification":
+                    loss = self.loss_fn(logits, labels)
+                else:
+                    loss = self.loss_fn(logits.squeeze(), labels.squeeze())
+
+            return_dict = modeling_outputs.SequenceClassifierOutputWithPast(
+                loss=loss,
+                logits=logits,
+                past_key_values=outputs.past_key_values,
+                hidden_states=outputs.hidden_states,
+                attentions=outputs.attentions,
             )
 
         return return_dict

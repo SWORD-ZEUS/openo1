@@ -63,7 +63,7 @@ class RewardModelDataset(Dataset):
     def process_question_steps(self, question, steps):
         data = []
         messages = [
-            {"role": "system", "content": "You are a helpful assistant. For each question, your task is to assess the quality and correctness of the last step. The rating should be between 0, 1, 2, where 0 means the step is incorrect, 1 means the step is useless, and 2 means the step is correct."},
+            {"role": "system", "content": "You are a helpful assistant. For each question, your task is to assess the quality and correctness of the last step. Each step starts with '<|start_header_id|>assistant<|end_header_id|> and ends with '<|eot_id|>'. You should focus on the last one. The rating should be between 0, 1, 2, where 0 means the step is incorrect, 1 means the step is useless, and 2 means the step is correct."},
             {"role": "user", "content": question}
         ]
         for step, rating in steps:
@@ -80,6 +80,7 @@ class RewardModelDataset(Dataset):
         # 使用apply_chat_template格式化消息
         formatted_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
         
+        # 先编码整个文本，找到特殊token的位置
         encoded = self.tokenizer.encode_plus(
             formatted_text,
             max_length=self.max_length,
@@ -91,6 +92,27 @@ class RewardModelDataset(Dataset):
         input_ids = encoded['input_ids'].squeeze()
         attention_mask = encoded['attention_mask'].squeeze()
         
+        # 找到最后一个assistant消息的开始和结束位置
+        # 通常格式是: <|start_header_id|>assistant<|end_header_id|> content <|eot_id|>
+        start_token = 128006  # <|start_header_id|>
+        end_token = 128009   # <|eot_id|>
+        
+        # 找到最后一个start_token的位置
+        start_positions = (input_ids == start_token).nonzero(as_tuple=True)[0]
+        if len(start_positions) > 0:
+            # 跳过<|start_header_id|>assistant<|end_header_id|>
+            step_start_idx = start_positions[-1].item() + 3
+        else:
+            step_start_idx = 0
+            
+        # 从step_start_idx开始找最近的end_token
+        end_positions = (input_ids[step_start_idx:] == end_token).nonzero(as_tuple=True)[0]
+        if len(end_positions) > 0:
+            # content结束的位置是eot前面一个token
+            step_end_idx = step_start_idx + end_positions[0].item() - 1
+        else:
+            step_end_idx = len(input_ids) - 1
+        
         # 将rating从-1, 0, 1转换为0, 1, 2
         if self.task == "classification":
             rating += 1  # 将-1, 0, 1转换为0, 1, 2
@@ -101,5 +123,7 @@ class RewardModelDataset(Dataset):
         return {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
-            'labels': rating_tensor
+            'labels': rating_tensor,
+            'step_start_idx': step_start_idx,
+            'step_end_idx': step_end_idx
         }
