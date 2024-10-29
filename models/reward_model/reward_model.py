@@ -1,6 +1,5 @@
 # from transformers import LlamaForCausalLM, LlamaTokenizer
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers import LlamaModel
+from transformers import AutoTokenizer, LlamaForSequenceClassification
 from transformers import modeling_outputs
 from peft import get_peft_model, LoraConfig, TaskType
 import torch
@@ -23,28 +22,29 @@ class RewardModel(nn.Module):
 
         # load base model and tokenizer
         assert 'model_path' in self.config, "model_path is required in config"
-        self.model = LlamaModel.from_pretrained(
+        self.num_labels = self.config['fine_tuning'].get('num_labels', 3)
+        self.model = LlamaForSequenceClassification.from_pretrained(
             self.config['model_path'],
-            torch_dtype=torch.float16
+            torch_dtype=torch.float16,
+            num_labels=self.num_labels
         )
         self.tokenizer = AutoTokenizer.from_pretrained(self.config['model_path'])
         self.tokenizer.pad_token = "<|reserved_special_token_0|>"
-
-        # # 设置填充标记
-        # if self.tokenizer.pad_token is None:
-        #     self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.model.config.pad_token_id = self.tokenizer.pad_token_id
 
         # Checking fine-tune method
-        # Defult to use adapter
+        # Default to use adapter
         assert 'fine_tuning' in self.config, "Need to specify fine_tuning config"
         self.only_train_head = self.config['fine_tuning'].get('only_train_head', False)
-        self.num_labels = self.config['fine_tuning'].get('num_labels', 3)
         if self.only_train_head:
             print("Only train head")
             # only train the linear head
             self.peft_method = None
             for param in self.model.parameters():
                 param.requires_grad = False
+            # Then only enable score head training
+            for param in self.model.score.parameters():
+                param.requires_grad = True
         else:
             self.peft_method = self.config['fine_tuning'].get('method', 'adapter')
             if self.peft_method == 'adapter':
@@ -79,8 +79,8 @@ class RewardModel(nn.Module):
         adapter_dropout = adapter_config['adapter_dropout']
         adapter_layers = adapter_config['adapter_layers']
 
-        # add adapter to layers specified in 'adapter_layers'
-        for i, layer in enumerate(self.model.layers):
+        # add adapter to base model layers specified in 'adapter_layers'
+        for i, layer in enumerate(self.model.model.layers):
             if i in adapter_layers:
                 adapter = Adapter(hidden_size, adapter_size, adapter_dropout)
                 layer.adapter = adapter
@@ -97,7 +97,7 @@ class RewardModel(nn.Module):
         assert 'lora_config' in self.config['fine_tuning'], "Need to specify lora config"
         lora_config = self.config['fine_tuning']['lora_config']
         peft_config = LoraConfig(
-            task_type=TaskType.CAUSAL_LM,
+            task_type=TaskType.SEQ_CLS,
             inference_mode=not training,
             r=lora_config['r'],
         )
@@ -142,7 +142,7 @@ class RewardModel(nn.Module):
             )
 
             # prepare input embeddings
-            inputs_embeds = self.model.embed_tokens(input_ids)
+            inputs_embeds = self.model.model.embed_tokens(input_ids)
             hidden_states = inputs_embeds
 
             # prepare position ids
@@ -154,7 +154,7 @@ class RewardModel(nn.Module):
                 ).unsqueeze(0).expand(input_ids.shape[0], -1)
             
             # forward through the model
-            for i, layer in enumerate(self.model.layers):
+            for i, layer in enumerate(self.model.model.layers):
                 layer_outputs = layer(
                     hidden_states,
                     attention_mask=attention_mask,
@@ -165,37 +165,55 @@ class RewardModel(nn.Module):
                 hidden_states = layer_outputs[0]
                 if hasattr(layer, 'adapter'):
                     hidden_states = layer.adapter(hidden_states)
-            hidden_states = self.model.norm(hidden_states)
+            hidden_states = self.model.model.norm(hidden_states)
+
+            # get logits from hidden states
+            logits = self.model.score(hidden_states)
+
+            # get batch size
+            batch_size = input_ids.shape[0]
+
+            # get sequence lengths for pooling
+            self.model.config.pad_token_id = self.tokenizer.pad_token_id
+            print(f"Model pad token id: {self.model.config.pad_token_id}")
+            print(f"Batch size: {batch_size}")
+            if self.model.config.pad_token_id is None and batch_size != 1:
+                raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
+            if self.model.config.pad_token_id is None:
+                sequence_lengths = -1
+            else:
+                sequence_lengths = torch.eq(input_ids, self.model.config.pad_token_id).int().argmax(-1) - 1
+                sequence_lengths = sequence_lengths % input_ids.shape[-1]
+                sequence_lengths = sequence_lengths.to(logits.device)
+
+            # pool logits at sequence lengths
+            scores = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+
+            # compute loss if labels provided
+            loss = None
+            if labels is not None:
+                config = {
+                    "num_labels": self.num_labels,
+                    "problem_type": self.task,
+                }
+                loss = self.model.loss_function(logits=logits, labels=labels, pooled_logits=scores, config=config)
+            return_dict = modeling_outputs.SequenceClassifierOutputWithPast(
+                loss=loss,
+                logits=scores,
+                past_key_values=None,
+                hidden_states=hidden_states,
+                attentions=None,
+            )
         else:
             # forward with LoRA or only train head
-            transformer_outputs = self.model(
+            return_dict = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                position_ids=position_ids
+                position_ids=position_ids,
+                labels=labels
             )
-            hidden_states = transformer_outputs[0]
-        
-        # get the last non-padding token in hidden states
-        batch_size = input_ids.shape[0]
-        assert self.tokenizer.pad_token is not None, "The tokenizer does not have a padding token"
-        sequence_lengths = torch.eq(input_ids, self.tokenizer.pad_token_id).int().argmax(-1) - 1
-        pooled_hidden_states = hidden_states[torch.arange(batch_size, device=input_ids.device), sequence_lengths]
-        scores = self.score(pooled_hidden_states)
-        # compute loss
-        assert labels is not None, "labels should not be None in training"
-        if self.task == "regression":
-            loss = self.loss_fn(scores.squeeze(), labels.squeeze())
-        elif self.task == "classification":
-            # loss = self.loss_fn(scores.view(-1, self.num_labels), labels.view(-1))
-            loss = self.loss_fn(scores.view(-1, self.num_labels).float(), labels.view(-1).long())
 
-        return modeling_outputs.SequenceClassifierOutputWithPast(
-            loss=loss,
-            logits=scores,
-            past_key_values=None,
-            hidden_states=hidden_states,
-            attentions=None,
-        )
+        return return_dict
 
     
     def set_inference_mode(self, inference_mode):

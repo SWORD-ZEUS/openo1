@@ -43,7 +43,7 @@ def main(args):
             print("Initialize Wandb Logger successfully")
         else:
             logger = TensorBoardLogger(
-                save_dir=config['wandb']['dir'],
+                save_dir=config['wandb']['save_dir'],
                 name=config['wandb']['project'],
                 version=config['wandb']['name']+f"-{time.strftime('%m%d%H%M%S')}",
             )
