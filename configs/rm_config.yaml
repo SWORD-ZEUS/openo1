@@ -76,9 +76,9 @@ wandb:
   project: "openo1_rm"
   entity: "sota"  # 替换为Wandb 用户名
   api_key: "local-dcbced16c903a79158b4ccce5f5b2af5b2d53b75"  # 替换为Wandb API 密钥
-  name: "rm_run"  # 为本次运行指定一个名称
+  name: "rm_run_classification_adapter_input2mean"  # 为本次运行指定一个名称
   tags: ["rm", "llama3-8B_Instruct"]  # 添加标签
-  notes: "Reward model fine-tuning of Llama 3 8B model"  # 添加描述
+  notes: "Reward model fine-tuning of Llama 3 8B model, classification task, adapter method, input2mean"  # 添加描述
   group: "rm_experiments"  # 指定分组
   job_type: "training"  # 指定作业类型
   save_dir: "/storage/zhuangkai/data/openo1/wandb"  # 指定wandb文件存储目录
@@ -89,4 +89,17 @@ test_settings:
   load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/1021200336/epoch=1-step=16622.ckpt"
   test_results_path: "/storage/zhuangkai/data/openo1/test_results/rm/test_results.json"
 
-
+fine_tuning:
+  only_train_head: false
+  num_labels: 3
+  method: "adapter"  # 可选值: "lora" 或 "adapter"
+  # LoRA 相关配置
+  lora_config:
+    r: 8
+    alpha: 32
+    dropout: 0.1
+  # Adapter 相关配置
+  adapter_config:
+    hidden_size: 64
+    adapter_dropout: 0.1
+    adapter_layers: [0, 4, 8, 12, 16, 20, 24, 28]  # 指定要添加adapter的层

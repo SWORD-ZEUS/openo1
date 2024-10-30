@@ -38,4 +38,5 @@ torchrun \
     --node_rank=$NODE_RANK \
     --master_addr=$MASTER_ADDR \
     --master_port=$MASTER_PORT \
-    /zhuangkai/openo1/scripts/run_rm.py
+    /zhuangkai/openo1/scripts/run_rm.py \
+    --config $CONFIG_FILE
