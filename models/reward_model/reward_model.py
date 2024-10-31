@@ -138,7 +138,7 @@ class RewardModel(nn.Module):
 
             # prepare attention mask
             sequence_length = input_ids.shape[1]
-            attention_mask = _prepare_4d_causal_attention_mask(
+            causal_mask = _prepare_4d_causal_attention_mask(
                 attention_mask,
                 sequence_length,
                 dtype,
@@ -161,7 +161,7 @@ class RewardModel(nn.Module):
             for i, layer in enumerate(self.model.model.layers):
                 layer_outputs = layer(
                     hidden_states,
-                    attention_mask=attention_mask,
+                    attention_mask=causal_mask,
                     position_ids=position_ids,
                     use_cache=False,
                     output_attentions=False
@@ -190,6 +190,7 @@ class RewardModel(nn.Module):
                 # 提取最后一个step的文本
                 last_step_ids = input_ids[i, step_start_idx[i]:step_end_idx[i]]
                 last_step_mask = attention_mask[i, step_start_idx[i]:step_end_idx[i]]
+                assert last_step_mask.unsqueeze(0).dim() == 2, "Attention mask must be 2D"
                 
                 # 对最后一个step单独进行编码
                 last_step_hidden = self.model.model.embed_tokens(last_step_ids)
@@ -200,13 +201,20 @@ class RewardModel(nn.Module):
                     device=hidden_states.device
                 )
 
+                # 为last_step生成position_ids
+                last_step_position_ids = torch.arange(
+                    last_step_ids.shape[0],
+                    dtype=torch.long,
+                    device=last_step_ids.device
+                ).unsqueeze(0)  # [1, seq_len]
+
                 # 通过模型层处理最后一个step
                 step_hidden = last_step_hidden.unsqueeze(0)  # 添加batch维度
                 for layer in self.model.model.layers:
                     layer_outputs = layer(
                         step_hidden,
                         attention_mask=last_step_attention,
-                        position_ids=None,
+                        position_ids=last_step_position_ids,  # 添加position_ids
                         use_cache=False,
                         output_attentions=False
                     )
@@ -337,7 +345,7 @@ def _prepare_4d_causal_attention_mask(
     causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
     
     # 处理注意力掩码
-    if attention_mask is not None:
+    if attention_mask is not None:    
         # 扩展注意力掩码维度 [batch_size, 1, seq_length, seq_length]
         expanded_mask = attention_mask.unsqueeze(1).unsqueeze(2)
         expanded_mask = expanded_mask.expand(-1, -1, sequence_length, -1)
