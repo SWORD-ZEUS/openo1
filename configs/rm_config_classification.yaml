@@ -3,7 +3,7 @@
 download_model_dir: "/storage/zhuangkai/data/openo1/download_model_weights"
 model_name: "Meta-Llama-3.1-8B-Instruct"  # 指向新的模型路径
 learning_rate: 5.0e-6
-batch_size_per_gpu: 4
+batch_size_per_gpu: 1
 num_epochs: 1
 warmup_steps: 100
 total_steps: 10000  # 根据数据集大小和 epoch 数调整
@@ -77,9 +77,9 @@ wandb:
   project: "openo1_rm"
   entity: "sota"  # 替换为Wandb 用户名
   api_key: "local-dcbced16c903a79158b4ccce5f5b2af5b2d53b75"  # 替换为Wandb API 密钥
-  name: "rm_run_classification_head"  # 为本次运行指定一个名称
+  name: "rm_run_classification_cross_attention"  # 为本次运行指定一个名称
   tags: ["rm", "llama3-8B_Instruct"]  # 添加标签
-  notes: "Reward model fine-tuning of Llama 3 8B model, train head, classification task"  # 添加描述
+  notes: "Reward model fine-tuning of Llama 3 8B model, cross attention, classification task"  # 添加描述
   group: "rm_experiments"  # 指定分组
   job_type: "training"  # 指定作业类型
   save_dir: "/storage/zhuangkai/data/openo1/wandb"  # 指定wandb文件存储目录
