@@ -147,7 +147,8 @@ def main():
 
     # 加载模型
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
-    model = RewardModel(model_path, only_train_head=args.only_train_head, num_labels=config['num_labels'], training=False)
+    config['model_path'] = model_path
+    model = RewardModel(config, training=False)
     model = model.float()
 
     # 加载训练权重（如果指定）
