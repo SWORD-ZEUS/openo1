@@ -39,3 +39,4 @@ torchrun \
     --master_addr=$MASTER_ADDR \
     --master_port=$MASTER_PORT \
     /zhuangkai/openo1/scripts/run_rm.py
+    --config $CONFIG_FILE

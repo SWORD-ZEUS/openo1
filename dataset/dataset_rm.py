@@ -14,10 +14,10 @@ class RewardModelDataset(Dataset):
     def load_data(self, data_path):
         data = []
         # 用于统计不同rating的样本数量
-        rating_counts = {-1: 0, 0: 0, 1: 0}
+        rating_counts = {-1: 0, 0: 0}
         
         # 按rating分类存储数据
-        rating_data = {-1: [], 0: [], 1: []}
+        rating_data = {-1: [], 0: []}
         
         # 首先读取所有数据并按rating分类
         with open(data_path, 'r', encoding='utf-8') as f:
@@ -36,13 +36,12 @@ class RewardModelDataset(Dataset):
         max_count = max(rating_counts.values())
         multipliers = {
             -1: int(max_count / rating_counts[-1]) if rating_counts[-1] > 0 else 0,
-            0: int(max_count / rating_counts[0]) if rating_counts[0] > 0 else 0,
-            1: 1
+            0: 1  # 假设0是多数类
         }
         
         # 对少数类别进行过采样
-        for rating in [-1, 0, 1]:
-            if rating in [-1, 0]:
+        for rating in [-1, 0]:
+            if rating == -1:
                 data.extend(rating_data[rating] * multipliers[rating])
             else:
                 data.extend(rating_data[rating])
@@ -51,8 +50,7 @@ class RewardModelDataset(Dataset):
         print(f"原始数据分布: {rating_counts}")
         final_counts = {
             -1: len(rating_data[-1]) * multipliers[-1],
-            0: len(rating_data[0]) * multipliers[0],
-            1: len(rating_data[1])
+            0: len(rating_data[0])
         }
         print(f"采样后分布: {final_counts}")
         print(f"采样倍数: {multipliers}")
@@ -113,9 +111,9 @@ class RewardModelDataset(Dataset):
         else:
             step_end_idx = len(input_ids) - 1
         
-        # 将rating从-1, 0, 1转换为0, 1, 2
+        # 将rating从-1, 0转换为0, 1（用于分类任务）
         if self.task == "classification":
-            rating += 1  # 将-1, 0, 1转换为0, 1, 2
+            rating += 1  # 将-1, 0转换为0, 1
             rating_tensor = torch.tensor(rating, dtype=torch.long)
         else:
             rating_tensor = torch.tensor(rating, dtype=torch.float)

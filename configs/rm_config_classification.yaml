@@ -14,11 +14,11 @@ lora_alpha: 32
 lora_dropout: 0.1
 val_interval: 0.1  # Validate every val_interval epoch
 weight_save_dir: "/storage/zhuangkai/data/openo1/weights/rm"
-train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution.jsonl"
+train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution_updated.jsonl"
 # train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_short.jsonl"
-val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_gt_pre_generated_solution.jsonl"
+val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_gt_pre_generated_solution_updated.jsonl"
 # val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_short.jsonl"
-test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_gt_pre_generated_solution.jsonl"
+test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_gt_pre_generated_solution_updated.jsonl"
 # test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_short.jsonl"
 # checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 # load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
@@ -77,9 +77,9 @@ wandb:
   project: "openo1_rm"
   entity: "sota"  # 替换为Wandb 用户名
   api_key: "local-dcbced16c903a79158b4ccce5f5b2af5b2d53b75"  # 替换为Wandb API 密钥
-  name: "rm_run"  # 为本次运行指定一个名称
+  name: "rm_run_classification_adapter"  # 为本次运行指定一个名称
   tags: ["rm", "llama3-8B_Instruct"]  # 添加标签
-  notes: "Reward model fine-tuning of Llama 3 8B model"  # 添加描述
+  notes: "Reward model fine-tuning of Llama 3 8B model, using adapter, classification task"  # 添加描述
   group: "rm_experiments"  # 指定分组
   job_type: "training"  # 指定作业类型
   save_dir: "/storage/zhuangkai/data/openo1/wandb"  # 指定wandb文件存储目录
@@ -92,7 +92,7 @@ test_settings:
 
 fine_tuning:
   only_train_head: false
-  num_labels: 3
+  num_labels: 2
   method: "adapter"  # 可选值: "lora" 或 "adapter"
   # LoRA 相关配置
   lora_config:
@@ -104,5 +104,6 @@ fine_tuning:
     hidden_size: 64
     adapter_dropout: 0.1
     adapter_layers: [0, 4, 8, 12, 16, 20, 24, 28]  # 指定要添加adapter的层
+    
 
 
