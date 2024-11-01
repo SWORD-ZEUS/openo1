@@ -3,19 +3,19 @@
 download_model_dir: "/storage/zhuangkai/data/openo1/download_model_weights"
 model_name: "Meta-Llama-3.1-8B-Instruct"  # 指向新的模型路径
 learning_rate: 5.0e-6
-batch_size_per_gpu: 4
+batch_size_per_gpu: 1
 num_epochs: 1
 warmup_steps: 100
 total_steps: 10000  # 根据数据集大小和 epoch 数调整
 max_length: 1024
-gpus_per_node: 4
+gpus_per_node: 2
 val_interval: 0.1  # Validate every val_interval epoch
 weight_save_dir: "/storage/zhuangkai/data/openo1/weights/rm"
-train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution.jsonl"
+train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution_updated.jsonl"
 # train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_short.jsonl"
-val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_gt_pre_generated_solution.jsonl"
+val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_gt_pre_generated_solution_updated.jsonl"
 # val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_short.jsonl"
-test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_gt_pre_generated_solution.jsonl"
+test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_gt_pre_generated_solution_updated.jsonl"
 # test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_short.jsonl"
 # checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 # load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
@@ -87,12 +87,12 @@ test_settings:
   load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/1025213047/epoch=0-step=2567.ckpt"
   test_results_dir: "/storage/zhuangkai/data/openo1/test_results/rm"
   only_train_head: false
-  num_labels: 3
+  num_labels: 2
   fine_tuning_method: "adapter"
 
 fine_tuning:
   only_train_head: false
-  num_labels: 3
+  num_labels: 2
   method: "adapter"  # 可选值: "lora" 或 "adapter"
   # LoRA 相关配置
   lora_config:
