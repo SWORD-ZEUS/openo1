@@ -188,18 +188,20 @@ class RewardModel(nn.Module):
                     device=device
                 ).unsqueeze(0).expand(input_ids.shape[0], -1)
 
-            # get last step input
+            # 批量处理last_step特征
             batch_size = input_ids.shape[0]
             last_step_features = []
+            max_step_length = max([end_idx - start_idx for start_idx, end_idx in zip(step_start_idx, step_end_idx)])
+            
+            padded_last_steps = torch.zeros((batch_size, max_step_length), dtype=torch.long, device=device)
             for i in range(batch_size):
-                last_step_ids = input_ids[i, step_start_idx[i]:step_end_idx[i]]
-                last_step_mask = attention_mask[i, :, :, step_start_idx[i]:step_end_idx[i]]
-                last_step_embeds = self.model.model.embed_tokens(last_step_ids)
-                last_step_features.append(last_step_embeds)
-
+                step_length = step_end_idx[i] - step_start_idx[i]
+                padded_last_steps[i, :step_length] = input_ids[i, step_start_idx[i]:step_end_idx[i]]
+                
+            last_step_embeds = self.model.model.embed_tokens(padded_last_steps)
+            
             # 通过模型层处理
             for i, layer in enumerate(self.model.model.layers):
-                # 正常的自注意力处理
                 layer_outputs = layer(
                     hidden_states,
                     attention_mask=attention_mask,
@@ -208,18 +210,10 @@ class RewardModel(nn.Module):
                     output_attentions=False
                 )
                 hidden_states = layer_outputs[0]
-
-                # 如果当前层有交叉注意力模块，则应用交叉注意力
+                
+                # 批量应用交叉注意力
                 if hasattr(layer, 'cross_attention'):
-                    # 处理每个batch中的last_step特征
-                    cross_attn_outputs = []
-                    for j in range(batch_size):
-                        cross_attn_output = layer.cross_attention(
-                            hidden_states[j:j+1],  # [1, seq_len, hidden_size]
-                            last_step_features[j].unsqueeze(0)  # [1, step_len, hidden_size]
-                        )
-                        cross_attn_outputs.append(cross_attn_output)
-                    hidden_states = torch.cat(cross_attn_outputs, dim=0)
+                    hidden_states = layer.cross_attention(hidden_states, last_step_embeds)
 
             # 最后的层归一化
             hidden_states = self.model.model.norm(hidden_states)
