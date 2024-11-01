@@ -89,8 +89,11 @@ class RewardModel(nn.Module):
         """使用给定索引获取step特征"""
         step_hidden_states = []
         for i in range(hidden_states.shape[0]):
-            features = hidden_states[i, step_start_idx[i]:step_end_idx[i], :]
-            step_hidden_states.append(features.mean(dim=0))
+            step_length = step_end_idx[i] - step_start_idx[i]
+            if step_length <= 0:
+                step_hidden_states.append(hidden_states[i, -1, :])
+            else:
+                step_hidden_states.append(hidden_states[i, step_start_idx[i]:step_end_idx[i], :].mean(dim=0))
         return torch.stack(step_hidden_states)
 
     def _get_step_features_default(self, hidden_states: Tensor, input_ids: Tensor) -> Tensor:

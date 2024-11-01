@@ -61,7 +61,7 @@ class RewardModelDataset(Dataset):
     def process_question_steps(self, question, steps):
         data = []
         messages = [
-            {"role": "system", "content": "You are a helpful assistant. For each question, your task is to assess the quality and correctness of the last step. Each step starts with '<|start_header_id|>assistant<|end_header_id|> and ends with '<|eot_id|>'. You should focus on the last one. The rating should be between 0, 1, 2, where 0 means the step is incorrect, 1 means the step is useless, and 2 means the step is correct."},
+            {"role": "system", "content": "You are a helpful assistant. For each question, your task is to assess the quality and correctness of the last step. Each step starts with '<|start_header_id|>assistant<|end_header_id|> and ends with '<|eot_id|>'. You should focus on the last one. The rating should be between 0, 1, where 0 means the step is incorrect, and 1 means the step is correct."},
             {"role": "user", "content": question}
         ]
         for step, rating in steps:
@@ -114,6 +114,7 @@ class RewardModelDataset(Dataset):
         # 将rating从-1, 0转换为0, 1（用于分类任务）
         if self.task == "classification":
             rating += 1  # 将-1, 0转换为0, 1
+            rating = max(0, min(1, rating))  # 限制在[0,1]范围内
             rating_tensor = torch.tensor(rating, dtype=torch.long)
         else:
             rating_tensor = torch.tensor(rating, dtype=torch.float)
