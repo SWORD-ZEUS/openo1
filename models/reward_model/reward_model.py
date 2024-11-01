@@ -1,28 +1,30 @@
-# from transformers import LlamaForCausalLM, LlamaTokenizer
-from transformers import AutoTokenizer, LlamaForSequenceClassification
-from transformers import modeling_outputs
-from peft import get_peft_model, LoraConfig, TaskType
+from typing import Optional, Tuple, Union
 import torch
-from torch import nn
+from torch import nn, Tensor
+from transformers import AutoTokenizer, LlamaForSequenceClassification
+from transformers.modeling_outputs import SequenceClassifierOutputWithPast
+from peft import get_peft_model, LoraConfig, TaskType
 from models.adapter import Adapter
 
 class RewardModel(nn.Module):
-    def __init__(self,
-                 config,
-                 training=True):
-        """
-        初始化RewardModelUsingAdapter类
+    def __init__(self, config: dict, training: bool = True):
+        """初始化奖励模型
         
         Args:
-            config (dict): 配置信息，包含模型路径和微调方式等
-            training (bool, optional): 是否处于训练模式。 Defaults to True.
+            config: 配置字典,包含model_path和fine_tuning等配置
+            training: 是否为训练模式
         """
-        self.config = config
         super().__init__()
+        self.config = config
+        self._init_base_model()
+        self._setup_fine_tuning(training)
+        self._setup_task()
 
-        # load base model and tokenizer
-        assert 'model_path' in self.config, "model_path is required in config"
-        self.num_labels = self.config['fine_tuning'].get('num_labels', 3)
+    def _init_base_model(self):
+        """初始化基础模型和分词器"""
+        assert 'model_path' in self.config, "model_path is required"
+        self.num_labels = self.config['fine_tuning'].get('num_labels', 2)
+        
         self.model = LlamaForSequenceClassification.from_pretrained(
             self.config['model_path'],
             torch_dtype=torch.float16,
@@ -32,43 +34,73 @@ class RewardModel(nn.Module):
         self.tokenizer.pad_token = "<|reserved_special_token_0|>"
         self.model.config.pad_token_id = self.tokenizer.pad_token_id
 
-        # Checking fine-tune method
-        # Default to use adapter
-        assert 'fine_tuning' in self.config, "Need to specify fine_tuning config"
+    def _setup_fine_tuning(self, training: bool):
+        """设置微调方法"""
+        assert 'fine_tuning' in self.config, "fine_tuning config required"
+        
         self.only_train_head = self.config['fine_tuning'].get('only_train_head', False)
         if self.only_train_head:
-            print("Only train head")
-            # only train the linear head
-            self.peft_method = None
-            for param in self.model.parameters():
-                param.requires_grad = False
-            # Then only enable score head training
-            for param in self.model.score.parameters():
-                param.requires_grad = True
+            self._setup_head_only_training()
+            return
+
+        self.peft_method = self.config['fine_tuning'].get('method', 'adapter')
+        if self.peft_method == 'adapter':
+            self._init_adapter()
+        elif self.peft_method == 'lora':
+            self._init_lora(training)
         else:
-            self.peft_method = self.config['fine_tuning'].get('method', 'adapter')
-            if self.peft_method == 'adapter':
-                # using adapter
-                print("Using adapter")
-                self._init_adapter()
-            elif self.peft_method == 'lora':
-                # using lora
-                print("Using lora")
-                self._init_lora(training)
-            else:
-                raise ValueError(f"Unsupported fine-tuning method: {self.peft_method}")
-        
-        # Adding regression/classification head
-        # And set loss function
-        self.score = nn.Linear(self.model.config.hidden_size, self.num_labels, bias=True)
+            raise ValueError(f"Unsupported fine-tuning method: {self.peft_method}")
+
+    def _setup_head_only_training(self):
+        """配置只训练头部的设置"""
+        print("Only training head")
+        self.peft_method = None
+        for param in self.model.parameters():
+            param.requires_grad = False
+        for param in self.model.score.parameters():
+            param.requires_grad = True
+
+    def _setup_task(self):
+        """设置任务类型和损失函数"""
+        self.score = nn.Linear(self.model.config.hidden_size, self.num_labels)
         self.task = "regression" if self.num_labels == 1 else "classification"
-        if self.task == "classification":
-            print("Classification task")
-            self.loss_fn = nn.CrossEntropyLoss()
-        else:
-            print("Regression task")
-            self.loss_fn = nn.MSELoss()
-    
+        self.loss_fn = nn.MSELoss() if self.task == "regression" else nn.CrossEntropyLoss()
+        print(f"{self.task.capitalize()} task")
+
+    def _get_step_features(self, hidden_states: Tensor, 
+                          step_start_idx: Optional[Tensor] = None,
+                          step_end_idx: Optional[Tensor] = None,
+                          input_ids: Optional[Tensor] = None) -> Tensor:
+        """获取最后一个step的特征向量
+        
+        Args:
+            hidden_states: 隐藏状态
+            step_start_idx: step开始索引
+            step_end_idx: step结束索引 
+            input_ids: 输入ID
+        """
+        if step_start_idx is not None and step_end_idx is not None:
+            return self._get_step_features_with_indices(hidden_states, step_start_idx, step_end_idx)
+        return self._get_step_features_default(hidden_states, input_ids)
+
+    def _get_step_features_with_indices(self, hidden_states: Tensor,
+                                      step_start_idx: Tensor,
+                                      step_end_idx: Tensor) -> Tensor:
+        """使用给定索引获取step特征"""
+        step_hidden_states = []
+        for i in range(hidden_states.shape[0]):
+            features = hidden_states[i, step_start_idx[i]:step_end_idx[i], :]
+            step_hidden_states.append(features.mean(dim=0))
+        return torch.stack(step_hidden_states)
+
+    def _get_step_features_default(self, hidden_states: Tensor, input_ids: Tensor) -> Tensor:
+        """使用默认方式获取step特征"""
+        sequence_lengths = torch.eq(input_ids, self.model.config.pad_token_id).int().argmax(-1) - 1
+        sequence_lengths = sequence_lengths % input_ids.shape[-1]
+        batch_size = input_ids.shape[0]
+        logits = self.model.score(hidden_states)
+        return logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+
     def _init_adapter(self):
         """ Add adpaters to base model"""
         # load adapter config
@@ -172,22 +204,7 @@ class RewardModel(nn.Module):
             hidden_states = self.model.model.norm(hidden_states)
 
             # 获取最后一个 step 的特征向量
-            if step_start_idx is not None and step_end_idx is not None:
-                batch_size = input_ids.shape[0]
-                # 获取每个样本中最后一个 step 的特征向量并平均
-                step_hidden_states = []
-                for i in range(batch_size):
-                    step_features = hidden_states[i, step_start_idx[i]:step_end_idx[i], :]
-                    step_hidden_states.append(step_features.mean(dim=0))
-                step_hidden_states = torch.stack(step_hidden_states)
-                logits = self.model.score(step_hidden_states)
-            else:
-                # 如果没有提供 step 索引，使用默认的序列长度计算方式
-                sequence_lengths = torch.eq(input_ids, self.model.config.pad_token_id).int().argmax(-1) - 1
-                sequence_lengths = sequence_lengths % input_ids.shape[-1]
-                batch_size = input_ids.shape[0]
-                logits = self.model.score(hidden_states)
-                logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+            logits = self._get_step_features(hidden_states, step_start_idx, step_end_idx, input_ids)
 
             # compute loss if labels provided
             loss = None
@@ -197,7 +214,7 @@ class RewardModel(nn.Module):
                 else:
                     loss = self.loss_fn(logits.squeeze(), labels.squeeze())
 
-            return_dict = modeling_outputs.SequenceClassifierOutputWithPast(
+            return_dict = SequenceClassifierOutputWithPast(
                 loss=loss,
                 logits=logits,
                 past_key_values=None,
@@ -217,22 +234,7 @@ class RewardModel(nn.Module):
             hidden_states = outputs.hidden_states[-1]
             
             # 获取最后一个 step 的特征向量
-            if step_start_idx is not None and step_end_idx is not None:
-                batch_size = input_ids.shape[0]
-                # 获取每个样本中最后一个 step 的特征向量并平均
-                step_hidden_states = []
-                for i in range(batch_size):
-                    step_features = hidden_states[i, step_start_idx[i]:step_end_idx[i], :]
-                    step_hidden_states.append(step_features.mean(dim=0))
-                step_hidden_states = torch.stack(step_hidden_states)
-                logits = self.model.score(step_hidden_states)
-            else:
-                # 如果没有提供 step 索引，使用默认的序列长度计算方式
-                sequence_lengths = torch.eq(input_ids, self.model.config.pad_token_id).int().argmax(-1) - 1
-                sequence_lengths = sequence_lengths % input_ids.shape[-1]
-                batch_size = input_ids.shape[0]
-                logits = self.model.score(hidden_states)
-                logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+            logits = self._get_step_features(hidden_states, step_start_idx, step_end_idx, input_ids)
 
             # 计算损失
             loss = None
@@ -242,7 +244,7 @@ class RewardModel(nn.Module):
                 else:
                     loss = self.loss_fn(logits.squeeze(), labels.squeeze())
 
-            return_dict = modeling_outputs.SequenceClassifierOutputWithPast(
+            return_dict = SequenceClassifierOutputWithPast(
                 loss=loss,
                 logits=logits,
                 past_key_values=outputs.past_key_values,
