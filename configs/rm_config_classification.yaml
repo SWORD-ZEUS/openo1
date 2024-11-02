@@ -14,11 +14,11 @@ lora_alpha: 32
 lora_dropout: 0.1
 val_interval: 0.1  # Validate every val_interval epoch
 weight_save_dir: "/storage/zhuangkai/data/openo1/weights/rm"
-train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution.jsonl"
+train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution_updated.jsonl"
 # train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_short.jsonl"
-val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_gt_pre_generated_solution.jsonl"
+val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_gt_pre_generated_solution_updated.jsonl"
 # val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_short.jsonl"
-test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_gt_pre_generated_solution.jsonl"
+test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_gt_pre_generated_solution_updated.jsonl"
 # test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_short.jsonl"
 # checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 # load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
