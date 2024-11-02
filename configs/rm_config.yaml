@@ -87,7 +87,7 @@ wandb:
 test_settings:
   is_log: false
   log_dir: "/storage/zhuangkai/data/openo1/tensorboard/rm"
-  load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/1101225638/epoch=0-step=944.ckpt"
+  load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/1101225638/epoch=0-step=8502.ckpt"
   test_results_dir: "/storage/zhuangkai/data/openo1/test_results/rm"
   only_train_head: false
   num_labels: 2
