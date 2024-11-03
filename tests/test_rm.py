@@ -1,4 +1,4 @@
-#运行：torchrun --nproc_per_node={gpus_per_node} tests/test_rm.py 两个参数：--only_train_head 和 --load_trained_weights
+#运行：torchrun --nproc_per_node={gpus_per_node} tests/test_rm.py 参数：--config 配置文件路径 --load_trained_weights 是否加载训练权重
 import sys
 import os
 import yaml
