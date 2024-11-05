@@ -91,7 +91,7 @@ def main(args):
         callbacks=[pl.callbacks.ModelCheckpoint(
             dirpath=os.path.join(config['weight_save_dir'], time.strftime('%m%d%H%M%S')), 
             save_top_k=1, 
-            monitor="val_loss",
+            monitor="val_total_loss",
             save_last=True,
             )]
     )

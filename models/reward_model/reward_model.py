@@ -64,7 +64,8 @@ class RewardModel(nn.Module):
         """设置任务类型和损失函数"""
         self.score = nn.Linear(self.model.config.hidden_size, self.num_labels)
         self.task = "regression" if self.num_labels == 1 else "classification"
-        self.loss_fn = nn.MSELoss() if self.task == "regression" else nn.CrossEntropyLoss()
+        # 设置分类损失和排序损失
+        self.cls_loss_fn = nn.CrossEntropyLoss() if self.task == "classification" else nn.MSELoss()
         print(f"{self.task.capitalize()} task")
 
     def _get_step_features(self, hidden_states: Tensor, 
@@ -138,65 +139,79 @@ class RewardModel(nn.Module):
         )
         self.model = get_peft_model(self.model, peft_config)
 
-    def forward(self,
-                input_ids,
-                attention_mask,
-                labels=None,
-                position_ids=None,
-                step_start_idx=None,
-                step_end_idx=None,
-                **kwargs):
-        """
-        模型前向传播
+    def compute_loss(self, correct_logits, wrong_logits, correct_labels, wrong_labels):
+        """计算综合损失：分类损失 + 排序损失(logistics loss)
         
         Args:
-            input_ids (torch.Tensor): 输入ID
-            attention_mask (torch.Tensor): 注意力掩码
-            labels (torch.Tensor, optional): 标签 (可选)
-            position_ids (torch.Tensor, optional): 位置编码 (可选)
-            step_start_idx (int, optional): 最后一个 step 的起始索引 (可选)
-            step_end_idx (int, optional): 最后一个 step 的结束索引 (可选)
-        
-        Returns:
-            transformers.modeling_outputs.SequenceClassifierOutputWithPast: 模型输出
+            correct_logits: 正确样本的预测分数
+            wrong_logits: 错误样本的预测分数
+            correct_labels: 正确样本的标签
+            wrong_labels: 错误样本的标签
         """
-        if self.peft_method == 'adapter':
-            # forward with adapter
-            
-            # check data dtype and device
-            device = input_ids.device
-            dtype = torch.float16 if self.model.dtype == torch.float16 else torch.float32
-            input_ids = input_ids.to(device)
-            attention_mask = attention_mask.to(device)
-            position_ids = position_ids.to(device) if position_ids is not None else None
-            labels = labels.to(device) if labels is not None else None
+        # 计算分类损失
+        cls_loss = self.cls_loss_fn(torch.cat([correct_logits, wrong_logits], dim=0),
+                                  torch.cat([correct_labels, wrong_labels], dim=0))
+        
+        # 计算排序损失 (correct应该比wrong得分高)
+        if self.task == "classification":
+            # 对于分类任务，使用softmax后的正类概率作为排序分数
+            correct_scores = torch.softmax(correct_logits, dim=-1)[:, 1]  # 取正类概率
+            wrong_scores = torch.softmax(wrong_logits, dim=-1)[:, 1]
+        else:
+            correct_scores = correct_logits.squeeze()
+            wrong_scores = wrong_logits.squeeze()
+        
+        # 计算logistics ranking loss
+        diff = correct_scores - wrong_scores
+        ranking_loss = torch.mean(torch.log(1 + torch.exp(-diff)))
+        
+        # 总损失 = 分类损失 + λ * 排序损失
+        lambda_weight = 1.0  # 可以通过配置文件调整权重
+        total_loss = cls_loss + lambda_weight * ranking_loss
+        
+        return {
+            'loss': total_loss,
+            'cls_loss': cls_loss,
+            'ranking_loss': ranking_loss
+        }
 
-            # prepare attention mask
-            sequence_length = input_ids.shape[1]
-            attention_mask = _prepare_4d_causal_attention_mask(
-                attention_mask,
+    def _process_sample(self, input_ids, attention_mask, position_ids=None):
+        """处理单个样本的前向传播
+        
+        Args:
+            input_ids: 输入ID
+            attention_mask: 注意力掩码
+            position_ids: 位置编码 (可选)
+        """
+        device = input_ids.device
+        dtype = torch.float16 if self.model.dtype == torch.float16 else torch.float32
+        
+        # 准备注意力掩码
+        sequence_length = input_ids.shape[1]
+        attention_mask_4d = _prepare_4d_causal_attention_mask(
+            attention_mask,
+            sequence_length,
+            dtype,
+            device
+        )
+        
+        # 准备position ids
+        if position_ids is None:
+            position_ids = torch.arange(
                 sequence_length,
-                dtype,
-                device
-            )
-
-            # prepare input embeddings
-            inputs_embeds = self.model.model.embed_tokens(input_ids)
-            hidden_states = inputs_embeds
-
-            # prepare position ids
-            if position_ids is None:
-                position_ids = torch.arange(
-                    sequence_length,
-                    dtype=torch.long,
-                    device=device
-                ).unsqueeze(0).expand(input_ids.shape[0], -1)
+                dtype=torch.long,
+                device=device
+            ).unsqueeze(0).expand(input_ids.shape[0], -1)
+        
+        if self.peft_method == 'adapter':
+            # 前向传播
+            hidden_states = self.model.model.embed_tokens(input_ids)
             
-            # forward through the model
+            # 通过模型层
             for i, layer in enumerate(self.model.model.layers):
                 layer_outputs = layer(
                     hidden_states,
-                    attention_mask=attention_mask,
+                    attention_mask=attention_mask_4d,
                     position_ids=position_ids,
                     use_cache=False,
                     output_attentions=False
@@ -205,57 +220,76 @@ class RewardModel(nn.Module):
                 if hasattr(layer, 'adapter'):
                     hidden_states = layer.adapter(hidden_states)
             hidden_states = self.model.model.norm(hidden_states)
-
-            # 获取最后一个 step 的特征向量
-            logits = self._get_step_features(hidden_states, step_start_idx, step_end_idx, input_ids)
-
-            # compute loss if labels provided
-            loss = None
-            if labels is not None:
-                if self.task == "classification":
-                    loss = self.loss_fn(logits, labels)
-                else:
-                    loss = self.loss_fn(logits.squeeze(), labels.squeeze())
-
-            return_dict = SequenceClassifierOutputWithPast(
-                loss=loss,
-                logits=logits,
-                past_key_values=None,
-                hidden_states=hidden_states,
-                attentions=None,
-            )
         else:
-            # forward with LoRA or only train head
+            # LoRA或只训练头部的情况
             outputs = self.model.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                output_hidden_states=True  # 确保输出 hidden states
+                output_hidden_states=True
             )
-            
-            # 获取最后一层的 hidden states
             hidden_states = outputs.hidden_states[-1]
-            
-            # 获取最后一个 step 的特征向量
-            logits = self._get_step_features(hidden_states, step_start_idx, step_end_idx, input_ids)
+        
+        return hidden_states
 
-            # 计算损失
-            loss = None
-            if labels is not None:
-                if self.task == "classification":
-                    loss = self.loss_fn(logits, labels)
-                else:
-                    loss = self.loss_fn(logits.squeeze(), labels.squeeze())
-
-            return_dict = SequenceClassifierOutputWithPast(
-                loss=loss,
-                logits=logits,
-                past_key_values=outputs.past_key_values,
-                hidden_states=outputs.hidden_states,
-                attentions=outputs.attentions,
+    def forward(self,
+                correct_input_ids,
+                correct_attention_mask,
+                wrong_input_ids,
+                wrong_attention_mask,
+                correct_labels=None,
+                wrong_labels=None,
+                position_ids=None,
+                correct_step_start_idx=None,
+                correct_step_end_idx=None,
+                wrong_step_start_idx=None,
+                wrong_step_end_idx=None,
+                **kwargs):
+        """前向传播，分别处理正确和错误样本"""
+        
+        # 处理正确和错误样本
+        correct_hidden_states = self._process_sample(correct_input_ids, correct_attention_mask, position_ids)
+        wrong_hidden_states = self._process_sample(wrong_input_ids, wrong_attention_mask, position_ids)
+        
+        # 获取特征向量
+        correct_logits = self._get_step_features(
+            correct_hidden_states, 
+            correct_step_start_idx, 
+            correct_step_end_idx, 
+            correct_input_ids
+        )
+        wrong_logits = self._get_step_features(
+            wrong_hidden_states, 
+            wrong_step_start_idx, 
+            wrong_step_end_idx, 
+            wrong_input_ids
+        )
+        
+        # 计算损失
+        loss_dict = None
+        if correct_labels is not None and wrong_labels is not None:
+            loss_dict = self.compute_loss(
+                correct_logits, 
+                wrong_logits,
+                correct_labels, 
+                wrong_labels
             )
 
-        return return_dict
+        return SequenceClassifierOutputWithPast(
+            loss=loss_dict['loss'] if loss_dict else None,
+            logits={
+                'correct_logits': correct_logits,
+                'wrong_logits': wrong_logits,
+                'cls_loss': loss_dict['cls_loss'] if loss_dict else None,
+                'ranking_loss': loss_dict['ranking_loss'] if loss_dict else None
+            },
+            past_key_values=None,
+            hidden_states={
+                'correct': correct_hidden_states,
+                'wrong': wrong_hidden_states
+            },
+            attentions=None,
+        )
 
     
     def set_inference_mode(self, inference_mode):
