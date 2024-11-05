@@ -5,20 +5,21 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.mpr import MultipleProcessRunnerSimplifier
 from utils.openai_access import call_chatgpt
+from utils.prompts import REWRITE_STEP_PROMPT
 
 class OrderedDatasetCreator(MultipleProcessRunnerSimplifier):
-    def __init__(self, data_path, save_path, n_process=4):
+    def __init__(self, data_path, save_path, n_process=4, num_scale=None):
         # 读取数据
         data = []
         with open(data_path, 'r', encoding='utf-8') as f:
-            for line in f:
+            for line in tqdm(f, desc="Reading data"):
                 item = json.loads(line)
                 problem = item['problem']
                 steps = item['steps']
                 
                 # 只处理rating为0的step
                 for i, (step, rating) in enumerate(steps):
-                    if rating == 0:
+                    if rating == 1:
                         # 获取前置steps
                         previous_steps = [s for s, _ in steps[:i]]
                         data.append({
@@ -27,9 +28,9 @@ class OrderedDatasetCreator(MultipleProcessRunnerSimplifier):
                             'current_step': step,
                             'all_steps': steps
                         })
-        
+        length = len(data)
         super().__init__(
-            data=data,
+            data=data[:int(length * num_scale)] if num_scale is not None else data,
             do=self.do,
             save_path=save_path,
             n_process=n_process,
@@ -51,7 +52,7 @@ class OrderedDatasetCreator(MultipleProcessRunnerSimplifier):
             rewritten_step = response_json.get('rewritten_step', '')
             
             if rewritten_step:
-                # 构造输出数据
+                #构造输出数据
                 output = {
                     'problem': item['problem'],
                     'steps': [step for step in item['previous_steps']] + 
@@ -67,16 +68,11 @@ class OrderedDatasetCreator(MultipleProcessRunnerSimplifier):
 
     def _create_prompt(self, problem, previous_steps, current_step):
         prompt = {
-            "task": "请重写下面这个解题步骤，使其变成一个错误的步骤。要求：\n"
-                   "1. 保持原始步骤的基本结构和长度\n"
-                   "2. 引入合理的错误，使其看起来可能是对的，但实际是错的\n"
-                   "3. 不要改变太多，只需要修改关键部分使其变得错误\n"
-                   "4. 返回JSON格式，键为'rewritten_step'",
+            "task": REWRITE_STEP_PROMPT,
             "problem": problem,
             "previous_steps": previous_steps,
             "current_step": current_step
         }
-        
         return json.dumps(prompt, ensure_ascii=False)
 
     def _aggregate(self, final_path, sub_paths):
@@ -90,23 +86,30 @@ class OrderedDatasetCreator(MultipleProcessRunnerSimplifier):
                         os.remove(sub_path)
         return None
 
-def main():
+def main(args):
     # 创建输出目录
-    os.makedirs('/zhuangkai/openo1/outputs/rm/ordered_dataset', exist_ok=True)
-    n_process = 32
+    os.makedirs(args.save_path, exist_ok=True)
+    n_process = args.n_process
+    num_scale = args.num_scale
     
     # 处理训练集、验证集和测试集
     for split in ['train', 'validation', 'test']:
-        input_path = f'/zhuangkai/openo1/dataset/prm800k/processed/rm/phase2_{split}_short.jsonl'
-        output_path = f'/zhuangkai/openo1/outputs/rm/ordered_dataset/{split}_ordered.jsonl'
-        
+        input_path = f'/zhuangkai/openo1/dataset/prm800k/processed/rm/phase2_{split}_gt_pre_generated_solution.jsonl'
+        output_path = f'{args.save_path}/{split}_ordered.jsonl'  
         print(f"\nProcessing {split} set...")
         creator = OrderedDatasetCreator(
             data_path=input_path,
             save_path=output_path,
-            n_process=n_process  # 可以根据需要调整进程数
+            n_process=n_process,
+            num_scale=num_scale  
         )
         creator.run()
 
 if __name__ == '__main__':
-    main()
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument('--n_process', type=int, default=128)
+    parser.add_argument('--save_path', type=str, default='/zhuangkai/openo1/outputs/rm/ordered_dataset')
+    parser.add_argument('--num_scale', type=float, default=None)
+    args = parser.parse_args()
+    main(args)
