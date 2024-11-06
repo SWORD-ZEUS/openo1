@@ -23,18 +23,21 @@ class RewardModelTester(pl.LightningModule):
         self.model = model
         self.config = config
         self.model.eval()
-        self.task = "classification" if config.get('num_labels', 1) > 1 else "regression"
+        self.task = "classification" if config["test_settings"].get('num_labels', 1) > 1 else "regression"
+        print(f"Task: {self.task}")
    
 
-    def forward(self, input_ids, attention_mask, labels=None):
-        return self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+    def forward(self, input_ids, attention_mask, labels=None, step_start_idx=None, step_end_idx=None):
+        return self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, step_start_idx=step_start_idx, step_end_idx=step_end_idx)
 
     def predict_step(self, batch, batch_idx):
         input_ids = batch['input_ids'].long()
         attention_mask = batch['attention_mask'].float()
-        labels = batch['labels'].float()
+        labels = batch['labels'].long() if self.task == "classification" else batch['labels'].float()
+        step_start_idx = batch['step_start_idx'].long()
+        step_end_idx = batch['step_end_idx'].long()
 
-        outputs = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+        outputs = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, step_start_idx=step_start_idx, step_end_idx=step_end_idx)
         logits = outputs.logits
         
         if self.task == "classification":
@@ -140,14 +143,17 @@ def main():
     parser = argparse.ArgumentParser(description="Test Reward Model")
     parser.add_argument("--config", type=str, default="/zhuangkai/openo1/configs/rm_config.yaml", help="Path to config file")
     parser.add_argument("--load_trained_weights", action="store_true", help="Whether to load trained weights")
-    parser.add_argument("--only_train_head", action="store_true", help="Only train the regression head")
     args = parser.parse_args()
 
     config = load_config(args.config)
 
     # 加载模型
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
-    model = RewardModel(model_path, only_train_head=args.only_train_head, num_labels=config['num_labels'], training=False)
+    config["model_path"] = model_path
+    config["fine_tuning"]["only_train_head"] = config["test_settings"]["only_train_head"]
+    config["fine_tuning"]["num_labels"] = config["test_settings"]["num_labels"]
+    config["fine_tuning"]["method"] = config["test_settings"]["fine_tuning_method"]
+    model = RewardModel(config, training=False)
     model = model.float()
 
     # 加载训练权重（如果指定）

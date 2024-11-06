@@ -53,14 +53,27 @@ def main(config_path):
 
     data_module = PRM800KDataModule(train_dataset, val_dataset, config['batch_size_per_gpu'])
 
-    
-    trainer = SFTTrainer(model, train_dataset, val_dataset, config)
     strategy = DeepSpeedStrategy(config=config['deepspeed_config'])
 
     # strategy = DeepSpeedStrategy(stage=3, offload_optimizer=True, offload_parameters=True)
     checkpoint_path = config.get('checkpoint_path', None)
     print(f"checkpoint_path: {checkpoint_path}")
     
+    if checkpoint_path:
+        print(f"Loading model from {checkpoint_path}")
+        # 使用 load_from_checkpoint 方法加载检查点
+        from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
+        client_sd = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
+        trainer = SFTTrainer(
+            model=model,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            config=config,
+        )
+        trainer.load_state_dict(client_sd, strict=True)
+    else:
+        trainer = SFTTrainer(model, train_dataset, val_dataset, config)
+
     # 创建 trainer
     pl_trainer = pl.Trainer(
         max_epochs=config['num_epochs'],
@@ -78,22 +91,6 @@ def main(config_path):
             save_last=True,
         )]
     )
-
-    if checkpoint_path:
-        print(f"Loading model from {checkpoint_path}")
-        # 使用 load_from_checkpoint 方法加载检查点
-        from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
-        client_sd = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
-        # client_sd = process_state_dict(client_sd)
-        trainer = SFTTrainer(
-            model=model,
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
-            config=config,
-        )
-        trainer.load_state_dict(client_sd, strict=True)
-    else:
-        trainer = SFTTrainer(model, train_dataset, val_dataset, config)
 
     # 开始训练
     pl_trainer.fit(trainer, datamodule=data_module)

@@ -19,6 +19,22 @@ class RMTrainer(pl.LightningModule):
         self.model.train()
         outputs = self.model(**batch)
         loss = outputs.loss
+        
+        # 检查loss是否为NaN
+        if torch.isnan(loss):
+            # 获取当前batch的一些信息用于调试
+            batch_info = {
+                'input_shape': batch['input_ids'].shape,
+                'labels': batch['labels'],
+                'step_start_idx': batch['step_start_idx'],
+                'step_end_idx': batch['step_end_idx'],
+            }
+            error_msg = (
+                f"训练过程中出现NaN损失值!\n"
+                f"Batch信息: {batch_info}\n"
+            )
+            raise ValueError(error_msg)
+        
         self.log(
             'train_loss', 
             loss, 
@@ -33,6 +49,20 @@ class RMTrainer(pl.LightningModule):
         self.model.eval()
         outputs = self.model(**batch)
         loss = outputs.loss
+        
+        # 检查loss是否为NaN
+        if torch.isnan(loss):
+            batch_info = {
+                'batch_idx': batch_idx,
+                'input_shape': batch['input_ids'].shape,
+                'labels': batch['labels'],
+            }
+            error_msg = (
+                f"验证过程中出现NaN损失值!\n"
+                f"Batch信息: {batch_info}"
+            )
+            raise ValueError(error_msg)
+        
         self.log(
             'val_loss', 
             loss, 
