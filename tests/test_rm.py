@@ -13,7 +13,7 @@ from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoin
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.reward_model.reward_model import RewardModel
-from dataset.dataset_rm import RewardModelDataset
+from dataset.dataset_single import SingleInputDataset
 from utils.process_state_dict import process_state_dict
 import time
 
@@ -25,10 +25,6 @@ class RewardModelTester(pl.LightningModule):
         self.model.eval()
         self.task = "classification" if config["test_settings"].get('num_labels', 1) > 1 else "regression"
         print(f"Task: {self.task}")
-   
-
-    def forward(self, input_ids, attention_mask, labels=None, step_start_idx=None, step_end_idx=None):
-        return self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, step_start_idx=step_start_idx, step_end_idx=step_end_idx)
 
     def predict_step(self, batch, batch_idx):
         input_ids = batch['input_ids'].long()
@@ -37,17 +33,17 @@ class RewardModelTester(pl.LightningModule):
         step_start_idx = batch['step_start_idx'].long()
         step_end_idx = batch['step_end_idx'].long()
 
-        outputs = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, step_start_idx=step_start_idx, step_end_idx=step_end_idx)
-        logits = outputs.logits
+        # 使用generate方法进行推理
+        outputs = self.model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            step_start_idx=step_start_idx,
+            step_end_idx=step_end_idx
+        )
         
-        if self.task == "classification":
-            # 对分类任务使用 softmax
-            predictions = torch.softmax(logits, dim=-1)
-        else:
-            # 回归任务保持不变
-            predictions = logits.squeeze()
-
-        # 确保 predictions 是至少 1 维的
+        predictions = outputs['scores']
+        
+        # 确保predictions是至少1维的
         if predictions.ndim == 0:
             predictions = predictions.unsqueeze(0)
 
@@ -175,7 +171,12 @@ def main():
 
     # 加载测试数据集
     task = rm_tester.task
-    test_dataset = RewardModelDataset(config['test_data_path'], model_path, config['max_length'], task)
+    test_dataset = SingleInputDataset(
+        config['test_data_path'], 
+        model_path,
+        config['max_length'],
+        task
+    )
     test_dataloader = DataLoader(test_dataset, batch_size=config['batch_size_per_gpu'], num_workers=4)
 
     # 设置 logger

@@ -291,7 +291,45 @@ class RewardModel(nn.Module):
             attentions=None,
         )
 
-    
+    def generate(self, 
+                 input_ids, 
+                 attention_mask, 
+                 position_ids=None, 
+                 step_start_idx=None, 
+                 step_end_idx=None,
+                 **kwargs):
+        """处理单个输入的推理
+        
+        Args:
+            input_ids: 输入ID张量 [batch_size, seq_len]
+            attention_mask: 注意力掩码 [batch_size, seq_len] 
+            position_ids: 位置编码 (可选)
+            step_start_idx: step开始位置 (可选)
+            step_end_idx: step结束位置 (可选)
+        """
+        # 获取隐藏状态
+        hidden_states = self._process_sample(input_ids, attention_mask, position_ids)
+        
+        # 获取logits
+        logits = self._get_step_features(
+            hidden_states,
+            step_start_idx,
+            step_end_idx,
+            input_ids
+        )
+        
+        # 根据任务类型处理输出
+        if self.task == "classification":
+            scores = torch.softmax(logits, dim=-1)  # 获取正类的概率
+        else:
+            scores = logits.squeeze()
+        
+        return {
+            'scores': scores,
+            'logits': logits,
+            'hidden_states': hidden_states
+        }
+
     def set_inference_mode(self, inference_mode):
         """
         设置模型的推理模式
