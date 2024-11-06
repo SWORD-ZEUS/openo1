@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from models.adapter import Adapter
 
-class RewardModelUsingAdapter(nn.Module):
+class RewardModel(nn.Module):
     def __init__(self,
                  config,
                  training=True):

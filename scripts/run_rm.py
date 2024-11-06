@@ -1,5 +1,6 @@
 import sys
 import os
+os.environ["PYTORCH_JIT"] = "0"
 import yaml
 import pytorch_lightning as pl
 from pytorch_lightning.strategies import DeepSpeedStrategy
