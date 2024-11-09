@@ -36,9 +36,9 @@ class RMTrainer(pl.LightningModule):
             raise ValueError(error_msg)
         
         # 记录各个损失组件
-        self.log('train_total_loss', loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
-        self.log('train_cls_loss', outputs.logits['cls_loss'], on_step=True, on_epoch=True, sync_dist=True)
-        self.log('train_ranking_loss', outputs.logits['ranking_loss'], on_step=True, on_epoch=True, sync_dist=True)
+        self.log('train_total_loss', loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True, batch_size=self.config['batch_size_per_gpu'])
+        self.log('train_cls_loss', outputs.logits['cls_loss'], on_step=True, on_epoch=True, sync_dist=True, batch_size=self.config['batch_size_per_gpu'])
+        self.log('train_ranking_loss', outputs.logits['ranking_loss'], on_step=True, on_epoch=True, sync_dist=True, batch_size=self.config['batch_size_per_gpu'])
         
         return loss
 
@@ -61,9 +61,9 @@ class RMTrainer(pl.LightningModule):
             raise ValueError(error_msg)
         
         # 记录各个损失组件
-        self.log('val_total_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
-        self.log('val_cls_loss', outputs.logits['cls_loss'], on_epoch=True, sync_dist=True)
-        self.log('val_ranking_loss', outputs.logits['ranking_loss'], on_epoch=True, sync_dist=True)
+        self.log('val_total_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True, batch_size=self.config['batch_size_per_gpu'])
+        self.log('val_cls_loss', outputs.logits['cls_loss'], on_epoch=True, sync_dist=True, batch_size=self.config['batch_size_per_gpu'])
+        self.log('val_ranking_loss', outputs.logits['ranking_loss'], on_epoch=True, sync_dist=True, batch_size=self.config['batch_size_per_gpu'])
 
         return loss
 

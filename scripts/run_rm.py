@@ -88,6 +88,7 @@ def main(args):
         accumulate_grad_batches=config['gradient_accumulation_steps'],
         val_check_interval=config['val_interval'],
         logger=logger,
+        log_every_n_steps=config['log_every_n_steps'],
         callbacks=[pl.callbacks.ModelCheckpoint(
             dirpath=os.path.join(config['weight_save_dir'], time.strftime('%m%d%H%M%S')), 
             save_top_k=1, 
