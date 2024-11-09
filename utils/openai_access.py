@@ -10,8 +10,8 @@ def get_oai_completion(prompt):
     api_pools = [
         # ("sk-sgiRF4epx9wYhTOqFeC493E5F41d453c994fB65a7dAdC9C2", "https://api.kwwai.top/v1", "gpt-4o-mini-2024-07-18"),
         # ("sk-vrcdzbOjXs5VCoyJ3bDdBaCeC95444C7Bf471aCdC0EcCd9f", "https://api.kwwai.top/v1", "gpt-4o-mini-2024-07-18"),
-        ("699b3308c248b557cc0c2985cda9f1eb.ag3dNoEPMuXzrPKz",None,"GLM-4-FLASH"),
-        # ("sk-3164d554bb6f4a41a5d12821fc151035","https://api.deepseek.com","deepseek-chat"),
+        # ("699b3308c248b557cc0c2985cda9f1eb.ag3dNoEPMuXzrPKz",None,"GLM-4-FLASH"),
+        ("sk-3164d554bb6f4a41a5d12821fc151035","https://api.deepseek.com","deepseek-chat"),
         # ("699b3308c248b557cc0c2985cda9f1eb.ag3dNoEPMuXzrPKz",None,"GLM-4-PLUS"),
         # ("699b3308c248b557cc0c2985cda9f1eb.ag3dNoEPMuXzrPKz",None,"GLM-4-AIR")
 

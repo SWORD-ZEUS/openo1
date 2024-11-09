@@ -69,8 +69,8 @@ class OrderedDatasetCreator(MultipleProcessRunnerSimplifier):
     def _create_prompt(self, problem, previous_steps, current_step):
         prompt = {
             "task": REWRITE_STEP_PROMPT,
-            "problem": problem,
-            "previous_steps": previous_steps,
+            # "problem": problem,
+            # "previous_steps": previous_steps,
             "current_step": current_step
         }
         return json.dumps(prompt, ensure_ascii=False)
