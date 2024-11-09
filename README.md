@@ -34,7 +34,7 @@ OpenO1是一个基于大型语言模型的开源项目，旨在通过结合思�
 ## 使用方法
 
 1. 准备数据集:
-   将PRM800K数据集放在 `data/` 目录下。
+   将PRM800K数据集放在 `dataset/prm800k` 目录下。
 
 2. 配置训练参数:
    编辑 `configs/sft_config.yaml` 文件。
