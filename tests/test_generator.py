@@ -67,12 +67,13 @@ def main(config_path):
     # 修改提示信息的格式，明确要求逐步生成文本
     messages = [
         {"role": "system", "content": "You are a helpful assistant. For each question, provide only one step of the solution at a time. After giving each step, wait for the next prompt before continuing."},
-        {"role": "user", "content": "Simplify: $\\frac{\\sqrt{2.5^2-0.7^2}}{2.7-2.5}$."},
-        {"role": "assistant", "content": """To simplify the expression, let's first simplify the numerator and denominator separately.
+        {"role": "user", "content": "what is the key point of building the reward model?"},
+        # {"role": "user", "content": "Simplify: $\\frac{\\sqrt{2.5^2-0.7^2}}{2.7-2.5}$."},
+#         {"role": "assistant", "content": """To simplify the expression, let's first simplify the numerator and denominator separately.
 
-Step 1: Simplify the numerator, $\sqrt{2.5^2-0.7^2}$, by squaring the numbers inside the square root. 
+# Step 1: Simplify the numerator, $\sqrt{2.5^2-0.7^2}$, by squaring the numbers inside the square root. 
 
-$2.5^2 = 6.25$ and $0.7^2 = 0.49$."""},
+# $2.5^2 = 6.25$ and $0.7^2 = 0.49$."""},
         # {"role": "assistant", "content": "I notice that the numerator is a difference of squares, so I can factor it as $(2.5-0.7)(2.5+0.7)$."},
 #         {"role": "assistant", "content": """To simplify the given expression, we need to start by evaluating the numerator, which involves finding the difference of squares. 
 
