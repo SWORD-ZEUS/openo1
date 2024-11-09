@@ -8,10 +8,7 @@ num_epochs: 1
 warmup_steps: 100
 total_steps: 10000  # 根据数据集大小和 epoch 数调整
 max_length: 1024
-lora_r: 8
 gpus_per_node: 2
-lora_alpha: 32
-lora_dropout: 0.1
 val_interval: 0.1  # Validate every val_interval epoch
 weight_save_dir: "/storage/zhuangkai/data/openo1/weights/rm"
 train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution_updated.jsonl"
@@ -23,6 +20,7 @@ test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_sho
 # checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 # load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 gradient_accumulation_steps: 4
+log_every_n_steps: 5
 
 
 deepspeed_config:

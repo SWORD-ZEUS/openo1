@@ -88,6 +88,7 @@ def main(args):
         accumulate_grad_batches=config['gradient_accumulation_steps'],
         val_check_interval=config['val_interval'],
         logger=logger,
+        log_every_n_steps=config['log_every_n_steps'],
         callbacks=[pl.callbacks.ModelCheckpoint(
             dirpath=os.path.join(config['weight_save_dir'], time.strftime('%m%d%H%M%S')), 
             save_top_k=1, 
@@ -101,6 +102,6 @@ def main(args):
 if __name__ == "__main__":
     import argparse
     args = argparse.ArgumentParser()
-    args.add_argument("--config", type=str, default="/zhuangkai/openo1/configs/rm_config_classification.yaml")
+    args.add_argument("--config", type=str, default="/zhuangkai/openo1/configs/rm_config.yaml")
     args = args.parse_args()
     main(args)
