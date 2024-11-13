@@ -48,21 +48,29 @@ def get_oai_completion(prompt):
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format={ "type": "json_object" },
+                temperature=0.0,#根据任务的不同来调整
                 stream=False
             )
         
         res = response.choices[0].message.content
         
-        if "GLM" in model:
-            pattern = re.compile(r"```(?:json\s+)?(\{.*?\})\s*```", re.DOTALL)
-            match = pattern.search(res)
-            if match:
-                gpt_output, _ = try_parse_json_object(match.group(1).strip())
-            else:
-                gpt_output = res
+        # if "GLM" in model:
+        #     pattern = re.compile(r"```(?:json\s+)?(\{.*?\})\s*```", re.DOTALL)
+        #     match = pattern.search(res)
+        #     if match:
+        #         gpt_output, _ = try_parse_json_object(match.group(1).strip())
+        #     else:
+        #         gpt_output = res
+        # else:
+        #     gpt_output = res
+            
+        pattern = re.compile(r"```(?:json\s+)?(\{.*?\})\s*```", re.DOTALL)
+        match = pattern.search(res)
+        if match:
+            gpt_output, _ = try_parse_json_object(match.group(1).strip())
         else:
             gpt_output = res
-            
+
         return gpt_output
         
     except requests.exceptions.Timeout:

@@ -31,7 +31,7 @@ REWRITE_STEP_PROMPT = """请重写下面这个解题步骤，使其变成一个�
 3. 不要改变太多，只需要修改关键部分使其变得错误
 4. 返回JSON格式，键为'rewritten_step'"""
 
-# 在prompts.py中添加:
+
 VERIFIER_TASK_PROMPT = """You are a math problem verifier. A student is trying to solve a math problem and has made a mistake in their solution step. Your task is to:
 
 1. Analyze the wrong solution step in the context of the problem
