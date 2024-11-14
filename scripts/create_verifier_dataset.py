@@ -61,8 +61,12 @@ class VerifierDatasetCreator(MultipleProcessRunnerSimplifier):
                 #构造输出数据
                 output = {
                     'problem': item['problem'],
-                    'steps': item['previous_steps'] + 
-                            [(item['current_wrong_step'], verifier_response)]
+                    'steps': {
+                        'previous_steps':item['previous_steps'],
+                        'current_step': item['current_wrong_step'],
+                        'current_rating': -1,
+                        'current_response': verifier_response
+                    }
                 }
                 
                 # 写入文件
@@ -101,9 +105,9 @@ def main(args):
     num_scale = args.num_scale
     
     # 处理训练集、验证集和测试集
-    for split in ['train', 'validation', 'test']:
+    for split in ['train','test']:
         input_path = f'/zhuangkai/openo1/outputs/verifier/phase1_{split}.jsonl'
-        output_path = f'{args.save_path}/phase1_{split}_verifier.jsonl'
+        output_path = f'{args.save_path}/phase1_{split}_wrong.jsonl'
         print(f"\nProcessing {split} set...")
         creator = VerifierDatasetCreator(
             data_path=input_path,
@@ -116,7 +120,7 @@ def main(args):
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
-    parser.add_argument('--n_process', type=int, default=128)
+    parser.add_argument('--n_process', type=int, default=256)
     parser.add_argument('--save_path', type=str, default='/zhuangkai/openo1/outputs/verifier')
     parser.add_argument('--num_scale', type=float, default=None)
     args = parser.parse_args()
