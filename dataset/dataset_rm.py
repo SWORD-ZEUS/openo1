@@ -1,8 +1,8 @@
-from .base_dataset import BaseRewardDataset
+from .base_dataset import BaseDataset
 import json
 import torch
 
-class RewardModelDataset(BaseRewardDataset):
+class RewardModelDataset(BaseDataset):
     def load_data(self, data_path):
         """加载并处理偏好数据"""
         data = []
@@ -82,7 +82,8 @@ class RewardModelDataset(BaseRewardDataset):
         attention_mask = encoded['attention_mask'].squeeze()
         
         # 获取step索引
-        indices = self._get_step_indices(input_ids, attention_mask)
+        indices = self._get_step_indices(input_ids, attention_mask, rating)
+        rating = indices.pop('rating')
         
         return {
             'input_ids': input_ids,

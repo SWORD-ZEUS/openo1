@@ -9,10 +9,23 @@ class PRM800KDataModule(LightningDataModule):
         self.batch_size = batch_size
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
+        collate_fn = getattr(self.train_dataset, 'collate_fn', None)
+        return DataLoader(
+            self.train_dataset, 
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=4,
+            collate_fn=collate_fn
+        )
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=4)
+        collate_fn = getattr(self.val_dataset, 'collate_fn', None)
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            num_workers=4,
+            collate_fn=collate_fn
+        )
     
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=4)
