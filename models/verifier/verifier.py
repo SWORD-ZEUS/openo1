@@ -4,6 +4,13 @@ from torch import nn, Tensor
 from transformers import AutoTokenizer, LlamaModel, LlamaForSequenceClassification
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from peft import get_peft_model, LoraConfig, TaskType
+
+# debug
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# debug
+
 from models.adapter import Adapter
 
 class Verifier(nn.Module):
@@ -86,6 +93,7 @@ class Verifier(nn.Module):
         # Option 1: 只训练头部/不用PEFT
         if self.only_train_head:
             self._setup_head_only_training()
+            self.peft_method = None
             return
 
         self.peft_method = self.config['fine_tuning'].get('method', 'adapter')
@@ -173,7 +181,7 @@ class Verifier(nn.Module):
         adapter_layers = adapter_config['adapter_layers']
 
         # add adapter to base model layers specified in 'adapter_layers'
-        for i, layer in enumerate(self.model.model.layers):
+        for i, layer in enumerate(self.model.layers):
             if i in adapter_layers:
                 adapter = Adapter(hidden_size, adapter_size, adapter_dropout)
                 layer.adapter = adapter
@@ -239,7 +247,7 @@ class Verifier(nn.Module):
             )
 
             # prepare input embeddings
-            inputs_embeds = self.model.model.embed_tokens(input_ids)
+            inputs_embeds = self.model.embed_tokens(input_ids)
             hidden_states = inputs_embeds
 
             # prepare position ids
@@ -251,7 +259,7 @@ class Verifier(nn.Module):
                 ).unsqueeze(0).expand(input_ids.shape[0], -1)
             
             # forward through the model
-            for i, layer in enumerate(self.model.model.layers):
+            for i, layer in enumerate(self.model.layers):
                 layer_outputs = layer(
                     hidden_states,
                     attention_mask=attention_mask,
@@ -262,10 +270,10 @@ class Verifier(nn.Module):
                 hidden_states = layer_outputs[0]
                 if hasattr(layer, 'adapter'):
                     hidden_states = layer.adapter(hidden_states)
-            hidden_states = self.model.model.norm(hidden_states)
+            hidden_states = self.model.norm(hidden_states)
         else:
             # forward with LoRA or only train head
-            outputs = self.model.model(
+            outputs = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
@@ -376,3 +384,31 @@ def _prepare_4d_causal_attention_mask(
     else:
         # 如果没有注意力掩码，只返回因果掩码
         return causal_mask.to(dtype)
+    
+if __name__ == "__main__":
+    config = {
+        'model_path': '/storage/zhangyingqi/weights_n_config/Meta-Llama-3.1-8B-Instruct',
+        'fine_tuning': {
+            'num_labels': 3,
+            'only_train_head': True,
+        }
+    }
+    verifier = Verifier(config, training='verifier')
+
+    batch_size = 2
+    seq_length = 32
+    input_ids = torch.randint(0, 30000, (batch_size, seq_length))
+    attention_mask = torch.ones((batch_size, seq_length))
+    lm_labels = torch.randint(0, 30000, (batch_size, seq_length))
+    cls_labels = torch.randint(0, 3, (batch_size,))
+    labels = (lm_labels, cls_labels)
+    step_start_idx = torch.tensor([10, 15])
+    step_end_idx = torch.tensor([20, 25])
+
+    outputs = verifier(input_ids, attention_mask, labels, step_start_idx, step_end_idx)
+    assert outputs.loss is not None, "Loss should not be None in training mode"
+    lm_logits, cls_logits = outputs.logits
+    assert lm_logits.shape == (batch_size, seq_length, verifier.model.config.vocab_size)
+    assert cls_logits.shape == (batch_size, verifier.num_labels)
+
+    print("Basic verifier test passed!")
