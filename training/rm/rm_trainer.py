@@ -42,6 +42,7 @@ class RMTrainer(pl.LightningModule):
             on_epoch=True, 
             prog_bar=True, 
             sync_dist=True,
+            batch_size=self.config['batch_size_per_gpu']
         )
         return loss
 
@@ -68,7 +69,8 @@ class RMTrainer(pl.LightningModule):
             loss, 
             on_epoch=True, 
             prog_bar=True, 
-            sync_dist=True
+            sync_dist=True,
+            batch_size=self.config['batch_size_per_gpu']
         )
         return loss
 
