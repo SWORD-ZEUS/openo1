@@ -6,9 +6,11 @@ from utils.prompts import VERIFIER_DATASET_PROMPT
 class VerifierModelDataset(BaseDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 定义verifier回复的标记模式
-        self.verifier_start_pattern = torch.tensor([128006, 424, 3125, 128007])
-        self.step_start_pattern = torch.tensor([128006, 78191, 128007])
+        # 定义标记模式
+        self.patterns = {
+            'verifier': torch.tensor([128006, 424, 3125, 128007]),
+            'step': torch.tensor([128006, 78191, 128007])
+        }
         self.end_token = 128009
 
     def load_data(self, data_path):
@@ -83,12 +85,52 @@ class VerifierModelDataset(BaseDataset):
         data.append((messages.copy(), current_rating))
         return data
 
+    def _find_pattern_positions(self, input_ids, pattern):
+        """通用的模式匹配方法"""
+        positions = []
+        for i in range(len(input_ids) - len(pattern) + 1):
+            if torch.all(input_ids[i:i+len(pattern)] == pattern):
+                positions.append(i)
+        return positions
+
+    def _find_next_end_token(self, input_ids, start_pos):
+        """在指定位置后查找结束标记"""
+        end_positions = (input_ids[start_pos:] == self.end_token).nonzero(as_tuple=True)[0]
+        return (start_pos + end_positions[0].item()) if len(end_positions) > 0 else None
+
+    def _verify_segment(self, input_ids, pattern_key):
+        """验证特定段落的完整性"""
+        pattern = self.patterns[pattern_key]
+        start_positions = self._find_pattern_positions(input_ids, pattern)
+        
+        if not start_positions:
+            return None, None
+            
+        start_idx = start_positions[-1] + len(pattern)
+        end_idx = self._find_next_end_token(input_ids, start_idx)
+        
+        if end_idx is None:
+            return None, None
+            
+        return start_idx, end_idx
+
+    def _get_step_indices(self, input_ids, attention_mask):
+        """获取step的索引"""
+        start_idx, end_idx = self._verify_segment(input_ids, 'step')
+        if start_idx is None:
+            return None
+            
+        return {'start': start_idx, 'end': end_idx}
+
+    def _verify_response(self, input_ids):
+        """验证response的完整性"""
+        start_idx, end_idx = self._verify_segment(input_ids, 'verifier')
+        return start_idx is not None
+
     def __getitem__(self, idx):
         messages, rating = self.data[idx]
-        formatted_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
-        
         encoded = self.tokenizer.encode_plus(
-            formatted_text,
+            self.tokenizer.apply_chat_template(messages, tokenize=False),
             max_length=self.max_length,
             padding='max_length',
             truncation=True,
@@ -98,23 +140,16 @@ class VerifierModelDataset(BaseDataset):
         input_ids = encoded['input_ids'].squeeze()
         attention_mask = encoded['attention_mask'].squeeze()
         
-        # 首先验证step的完整性
+        # 验证完整性
         indices = self._get_step_indices(input_ids, attention_mask)
-        if indices is None:
+        if indices is None or not self._verify_response(input_ids):
             return None
             
-        # 然后验证response的完整性
-        if not self._verify_response(input_ids):
-            return None
-            
-        labels = torch.full_like(input_ids, -100)
-        
         # 设置response labels
-        start_idx = self._find_pattern_index(input_ids)
+        labels = torch.full_like(input_ids, -100)
+        start_idx, end_idx = self._verify_segment(input_ids, 'verifier')
         if start_idx is not None:
-            end_idx = self._find_end_token(input_ids, start_idx + 4)
-            if end_idx is not None:
-                labels[start_idx+4:end_idx+1] = input_ids[start_idx+4:end_idx+1]
+            labels[start_idx:end_idx+1] = input_ids[start_idx:end_idx+1]
 
         return {
             'input_ids': input_ids,
@@ -125,62 +160,6 @@ class VerifierModelDataset(BaseDataset):
             },
             'step_start_idx': indices['start'],
             'step_end_idx': indices['end']
-        }
-
-    def _verify_response(self, input_ids):
-        """验证response是否完整"""
-        start_idx = self._find_pattern_index(input_ids)
-        if start_idx is None:
-            return False
-        
-        end_idx = self._find_end_token(input_ids, start_idx + 4)
-        return end_idx is not None
-
-    def _find_pattern_index(self, input_ids):
-        """查找开始模式的位置"""
-        for i in range(len(input_ids) - len(self.verifier_start_pattern) + 1):
-            if torch.all(input_ids[i:i+len(self.verifier_start_pattern)] == self.verifier_start_pattern):
-                return i
-        return None
-
-    def _find_end_token(self, input_ids, start_pos):
-        """查找结束标记的位置"""
-        for j in range(start_pos, len(input_ids)):
-            if input_ids[j] == self.end_token:
-                return j
-        return None
-
-    def _get_step_indices(self, input_ids, attention_mask):
-        """
-        重写基类方法，查找最后一组assistant回答的位置
-        返回: dict with start和end索引
-        """
-        # 查找所有可能的step起始位置
-        start_positions = []
-        for i in range(len(input_ids) - len(self.step_start_pattern) + 1):
-            if torch.all(input_ids[i:i+len(self.step_start_pattern)] == self.step_start_pattern):
-                start_positions.append(i)
-        
-        if not start_positions:
-            return None
-            
-        # 获取最后一个step的起始位置
-        last_start = start_positions[-1]
-        start_idx = last_start + len(self.step_start_pattern)
-        
-        # 在start_idx之后查找结束标记
-        end_idx = None
-        for i in range(start_idx, len(input_ids)):
-            if input_ids[i] == self.end_token:
-                end_idx = i
-                break
-                
-        if end_idx is None:
-            return None
-            
-        return {
-            'start': start_idx,
-            'end': end_idx
         }
 
     def collate_fn(self, batch):
