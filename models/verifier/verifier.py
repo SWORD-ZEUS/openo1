@@ -151,17 +151,16 @@ class Verifier(nn.Module):
             else:
                 step_hidden_states.append(hidden_states[i, step_start_idx[i]:step_end_idx[i], :].mean(dim=0))
 
-        step_hidden_states = torch.stack(step_hidden_states)
-        logits = self.model.score(step_hidden_states)
-        return logits
+        return torch.stack(step_hidden_states)
 
     def _get_step_features_default(self, hidden_states: Tensor, input_ids: Tensor) -> Tensor:
         """使用默认方式获取step特征"""
         sequence_lengths = torch.eq(input_ids, self.model.config.pad_token_id).int().argmax(-1) - 1
         sequence_lengths = sequence_lengths % input_ids.shape[-1]
         batch_size = input_ids.shape[0]
-        logits = self.model.score(hidden_states)
-        return logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+        # logits = self.model.score(hidden_states)
+        # return logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+        return hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
 
     def _init_adapter(self):
         """ Add adpaters to base model"""
@@ -264,25 +263,6 @@ class Verifier(nn.Module):
                 if hasattr(layer, 'adapter'):
                     hidden_states = layer.adapter(hidden_states)
             hidden_states = self.model.model.norm(hidden_states)
-
-            # 获取最后一个 step 的特征向量
-            logits = self._get_step_features(hidden_states, step_start_idx, step_end_idx, input_ids)
-
-            # compute loss if labels provided
-            loss = None
-            if labels is not None:
-                if self.task == "classification":
-                    loss = self.loss_fn(logits, labels)
-                else:
-                    loss = self.loss_fn(logits.squeeze(), labels.squeeze())
-
-            return_dict = SequenceClassifierOutputWithPast(
-                loss=loss,
-                logits=logits,
-                past_key_values=None,
-                hidden_states=hidden_states,
-                attentions=None,
-            )
         else:
             # forward with LoRA or only train head
             outputs = self.model.model(
@@ -294,28 +274,44 @@ class Verifier(nn.Module):
             
             # 获取最后一层的 hidden states
             hidden_states = outputs.hidden_states[-1]
+        
+        # 计算loss
+        loss = None
+        if self.task == 'verifier':
+            # 过分类和语言头
+            lm_logits = self.response(hidden_states)
+            cls_logits = self._get_step_features(hidden_states, step_start_idx, step_end_idx, input_ids)
+            cls_logits = self.classification(cls_logits)
+            logits = (lm_logits, cls_logits)
             
-            # 获取最后一个 step 的特征向量
+            lm_loss = None
+            cls_loss = None
+            assert isinstance(labels, tuple) and len(labels) == 2, "labels should be a tuple with 2 elements"
+            lm_labels, cls_labels = labels # unpack the labels
+            shift_lm_logits = lm_logits[..., :-1, :].contiguous()
+            shift_lm_labels = lm_labels[..., 1:].contiguous()
+            lm_loss = self.loss_fn(shift_lm_logits.view(-1, shift_lm_logits.size(-1)), shift_lm_labels.view(-1))
+            cls_loss = self.loss_fn(cls_logits, cls_labels)
+            loss = lm_loss + cls_loss
+        elif self.task == 'predictor':
+            # 过回归头
             logits = self._get_step_features(hidden_states, step_start_idx, step_end_idx, input_ids)
+            logits = self.win_rate(logits)
 
-            # 计算损失
-            loss = None
-            if labels is not None:
-                if self.task == "classification":
-                    loss = self.loss_fn(logits, labels)
-                else:
-                    loss = self.loss_fn(logits.squeeze(), labels.squeeze())
+            assert labels is not None, "labels are required for predictor task"
+            loss = self.loss_fn(logits.squeeze(), labels.squeeze())
+        else:
+            raise ValueError(f"Unsupported task: {self.task}")
 
-            return_dict = SequenceClassifierOutputWithPast(
-                loss=loss,
-                logits=logits,
-                past_key_values=outputs.past_key_values,
-                hidden_states=outputs.hidden_states,
-                attentions=outputs.attentions,
-            )
+        return_dict = SequenceClassifierOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=None,
+            hidden_states=hidden_states,
+            attentions=None,
+        )
 
         return return_dict
-
     
     def set_inference_mode(self, inference_mode):
         """
