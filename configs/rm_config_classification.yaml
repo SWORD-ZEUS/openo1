@@ -1,6 +1,6 @@
 # sft_config.yaml
 
-download_model_dir: "/storage/zhuangkai/data/openo1/download_model_weights"
+download_model_dir: "/storage/zhangyingqi/weights_n_config"
 model_name: "Meta-Llama-3.1-8B-Instruct"  # 指向新的模型路径
 learning_rate: 5.0e-6
 batch_size_per_gpu: 1
@@ -13,17 +13,31 @@ gpus_per_node: 2
 lora_alpha: 32
 lora_dropout: 0.1
 val_interval: 0.1  # Validate every val_interval epoch
-weight_save_dir: "/storage/zhuangkai/data/openo1/weights/rm"
-train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution_updated.jsonl"
-# train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_short.jsonl"
-val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_gt_pre_generated_solution_updated.jsonl"
-# val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_short.jsonl"
-test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_short.jsonl"
-# test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_short.jsonl"
-# checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
-# load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
+weight_save_dir: "/storage/zhangyingqi/openo1_data/weights/rm"
+train_data_path: "/storage/zhangyingqi/openo1_data/prm800k/processsed/rm/phase2_train_gt_pre_generated_solution_updated.jsonl"
+# train_data_path: "/storage/zhangyingqi/openo1_data/prm800k/processsed/rm/phase2_train_short.jsonl"
+val_data_path: "/storage/zhangyingqi/openo1_data/prm800k/processsed/rm/phase2_validation_gt_pre_generated_solution_updated.jsonl"
+# val_data_path: "/storage/zhangyingqi/openo1_data/prm800k/processsed/rm/phase2_validation_short.jsonl"
+test_data_path: "/storage/zhangyingqi/openo1_data/prm800k/processsed/rm/phase2_test_short.jsonl"
+# test_data_path: "/storage/zhangyingqi/openo1_data/prm800k/processsed/rm/phase2_test_short.jsonl"
+# checkpoint_path: "/storage/zhangyingqi/openo1_data/weights/sft/epoch=2-step=4911.ckpt"
+# load_lora_weights_path: "/storage/zhangyingqi/openo1_data/weights/sft/epoch=2-step=4911.ckpt"
 gradient_accumulation_steps: 4
 
+fine_tuning:
+  only_train_head: false
+  num_labels: 2
+  method: "adapter"  # 可选值: "lora" 或 "adapter"
+  # LoRA 相关配置
+  lora_config:
+    r: 8
+    alpha: 32
+    dropout: 0.1
+  # Adapter 相关配置
+  adapter_config:
+    hidden_size: 64
+    adapter_dropout: 0.1
+    adapter_layers: [0, 4, 8, 12, 16, 20, 24, 28]  # 指定要添加adapter的层
 
 deepspeed_config:
   # train_micro_batch_size_per_gpu 将在 Python 代码中动态计算
@@ -72,41 +86,23 @@ deepspeed_config:
       pin_memory: true
 
 wandb:
-  use_wandb: true
-  # use_wandb: false
+  # use_wandb: true
+  use_wandb: false
   project: "openo1_rm"
-  entity: "sota"  # 替换为Wandb 用户名
-  api_key: "local-dcbced16c903a79158b4ccce5f5b2af5b2d53b75"  # 替换为Wandb API 密钥
+  entity: "whelzyq"  # 替换为Wandb 用户名
+  api_key: "d568be513188516cf9d99586886721eac683e4a6"  # 替换为Wandb API 密钥
   name: "rm_run_classification_adapter"  # 为本次运行指定一个名称
   tags: ["rm", "llama3-8B_Instruct"]  # 添加标签
   notes: "Reward model fine-tuning of Llama 3 8B model, using adapter, classification task"  # 添加描述
   group: "rm_experiments"  # 指定分组
   job_type: "training"  # 指定作业类型
-  save_dir: "/storage/zhuangkai/data/openo1/wandb"  # 指定wandb文件存储目录
+  save_dir: "/storage/zhangyingqi/openo1_data/wandb"  # 指定wandb文件存储目录
 
 test_settings:
   is_log: false
-  log_dir: "/storage/zhuangkai/data/openo1/tensorboard/rm"
-  load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/1101225638/epoch=0-step=8502.ckpt"
-  test_results_dir: "/storage/zhuangkai/data/openo1/test_results/rm"
+  log_dir: "/storage/zhangyingqi/openo1_data/tensorboard/rm"
+  load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/1025030718/epoch=0-step=4432.ckpt"
+  test_results_dir: "/storage/zhangyingqi/openo1_data/test_results/rm"
   only_train_head: false
   num_labels: 2
   fine_tuning_method: "adapter"
-
-fine_tuning:
-  only_train_head: false
-  num_labels: 2
-  method: "adapter"  # 可选值: "lora" 或 "adapter"
-  # LoRA 相关配置
-  lora_config:
-    r: 8
-    alpha: 32
-    dropout: 0.1
-  # Adapter 相关配置
-  adapter_config:
-    hidden_size: 64
-    adapter_dropout: 0.1
-    adapter_layers: [0, 4, 8, 12, 16, 20, 24, 28]  # 指定要添加adapter的层
-    
-
-
