@@ -94,7 +94,9 @@ class RewardModel(nn.Module):
                 step_hidden_states.append(hidden_states[i, -1, :])
             else:
                 step_hidden_states.append(hidden_states[i, step_start_idx[i]:step_end_idx[i], :].mean(dim=0))
-        return torch.stack(step_hidden_states)
+        step_hidden_states = torch.stack(step_hidden_states)
+        # 添加这一行,通过score层
+        return self.model.score(step_hidden_states)
 
     def _get_step_features_default(self, hidden_states: Tensor, input_ids: Tensor) -> Tensor:
         """使用默认方式获取step特征"""
