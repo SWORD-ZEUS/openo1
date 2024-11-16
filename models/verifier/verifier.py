@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Union
 import torch
 from torch import nn, Tensor
-from transformers import AutoTokenizer, LlamaModel, LlamaForSequenceClassification
+from transformers import AutoTokenizer, LlamaModel, LlamaForCausalLM, LlamaForSequenceClassification
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from peft import get_peft_model, LoraConfig, TaskType
 
@@ -38,8 +38,7 @@ class Verifier(nn.Module):
         # 初始化基础模型
         self.model = LlamaModel.from_pretrained(
             self.config['model_path'],
-            torch_dtype=torch.float16,
-            num_labels=self.num_labels
+            torch_dtype=torch.float16
         )
         
         # 初始化分词器
@@ -48,8 +47,15 @@ class Verifier(nn.Module):
         self.model.config.pad_token_id = self.tokenizer.pad_token_id
         
         # 初始化三个头
-        # 1. 语言模型头部用于生成回复
+        # 1. 语言模型头部用于生成回复（语言头要加载预训练权重）
+        temp_model = LlamaForCausalLM.from_pretrained(
+            self.config['model_path'],
+            torch_dtype=torch.float16,
+            device_map='cpu'
+        )
         self.response = nn.Linear(self.model.config.hidden_size, self.model.config.vocab_size)
+        self.response.load_state_dict(temp_model.lm_head.state_dict())
+        del temp_model
         
         # 2. 分类头部用于验证答案步骤
         self.classification = nn.Linear(self.model.config.hidden_size, self.num_labels)
@@ -62,12 +68,14 @@ class Verifier(nn.Module):
         设置训练方法
         training: 训练模式，None为非训练模式，'verifier'为训语言头和分类头，'predictor'为训练胜率头
         """
+        # 无论训不训练，训练哪种功能，语言头都是冻住的
+        for param in self.response.parameters():
+                param.requires_grad = True
+
         ##### 如果training=None，非训练模式。冻住整个个模型
         if training is None:
             for param in self.model.parameters():
                 param.requires_grad = False
-            for param in self.response.parameters():
-                param.requires_grad = True
             for param in self.classification.parameters():
                 param.requires_grad = True
             for param in self.win_rate.parameters():
@@ -80,8 +88,6 @@ class Verifier(nn.Module):
             for param in self.win_rate.parameters():
                 param.requires_grad = False
         elif training == 'predictor':
-            for param in self.response.parameters():
-                param.requires_grad = False
             for param in self.classification.parameters():
                 param.requires_grad = False
         else:
