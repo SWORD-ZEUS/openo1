@@ -294,8 +294,8 @@ class Verifier(nn.Module):
             
             lm_loss = None
             cls_loss = None
-            assert isinstance(labels, tuple) and len(labels) == 2, "labels should be a tuple with 2 elements"
-            lm_labels, cls_labels = labels # unpack the labels
+            assert isinstance(labels, dict) and len(labels) == 2, "labels should be a dictionary with 2 elements"
+            lm_labels, cls_labels = labels['response'], labels['rating'] # unpack the labels
             shift_lm_logits = lm_logits[..., :-1, :].contiguous()
             shift_lm_labels = lm_labels[..., 1:].contiguous()
             lm_loss = self.loss_fn(shift_lm_logits.view(-1, shift_lm_logits.size(-1)), shift_lm_labels.view(-1))
