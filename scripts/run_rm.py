@@ -1,6 +1,5 @@
 import sys
 import os
-os.environ["PYTORCH_JIT"] = "0"
 import yaml
 import pytorch_lightning as pl
 from pytorch_lightning.strategies import DeepSpeedStrategy
@@ -103,6 +102,6 @@ def main(args):
 if __name__ == "__main__":
     import argparse
     args = argparse.ArgumentParser()
-    args.add_argument("--config", type=str, default="/storage/zhangyingqi/openo1/configs/rm_config_classification.yaml")
+    args.add_argument("--config", type=str, default="/zhuangkai/openo1/configs/rm_config.yaml")
     args = args.parse_args()
     main(args)

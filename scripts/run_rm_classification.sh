@@ -12,7 +12,7 @@ get_yaml_value() {
 }
 
 # 设置配置文件路径
-CONFIG_FILE="/storage/zhangyingqi/openo1/configs/rm_config_classification.yaml"
+CONFIG_FILE="/zhuangkai/openo1/configs/rm_config_classification.yaml"
 
 # 从配置文件中读取gpus_per_node的值
 GPUS_PER_NODE=$(get_yaml_value "$CONFIG_FILE" "gpus_per_node")
@@ -38,5 +38,5 @@ torchrun \
     --node_rank=$NODE_RANK \
     --master_addr=$MASTER_ADDR \
     --master_port=$MASTER_PORT \
-    /storage/zhangyingqi/openo1/scripts/run_rm.py
+    /zhuangkai/openo1/scripts/run_rm.py
     --config $CONFIG_FILE
