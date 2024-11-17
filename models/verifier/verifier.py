@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Union
 import torch
 from torch import nn, Tensor
-from transformers import AutoTokenizer, LlamaModel, LlamaForSequenceClassification
+from transformers import AutoTokenizer, LlamaModel,  LlamaForCausalLM, AutoModelForCausalLM, LlamaForSequenceClassification
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from peft import get_peft_model, LoraConfig, TaskType
 
@@ -39,7 +39,6 @@ class Verifier(nn.Module):
         self.model = LlamaModel.from_pretrained(
             self.config['model_path'],
             torch_dtype=torch.float16,
-            num_labels=self.num_labels
         )
         
         # 初始化分词器
@@ -48,8 +47,14 @@ class Verifier(nn.Module):
         self.model.config.pad_token_id = self.tokenizer.pad_token_id
         
         # 初始化三个头
-        # 1. 语言模型头部用于生成回复
-        self.response = nn.Linear(self.model.config.hidden_size, self.model.config.vocab_size)
+        # 1. 语言模型头部用于生成回复（语言头要加载预训练权重）
+        temp_model = AutoModelForCausalLM.from_pretrained(
+            self.config['model_path'],
+            torch_dtype=torch.float16,
+        )
+        self.response = nn.Linear(self.model.config.hidden_size, temp_model.config.vocab_size,bias=False)
+        self.response.load_state_dict(temp_model.lm_head.state_dict())
+        del temp_model
         
         # 2. 分类头部用于验证答案步骤
         self.classification = nn.Linear(self.model.config.hidden_size, self.num_labels)
@@ -62,16 +67,18 @@ class Verifier(nn.Module):
         设置训练方法
         training: 训练模式，None为非训练模式，'verifier'为训语言头和分类头，'predictor'为训练胜率头
         """
+        # 无论训不训练，训练哪种功能，语言头都是冻住的
+        for param in self.response.parameters():
+                param.requires_grad = False
+
         ##### 如果training=None，非训练模式。冻住整个个模型
         if training is None:
             for param in self.model.parameters():
                 param.requires_grad = False
-            for param in self.response.parameters():
-                param.requires_grad = True
             for param in self.classification.parameters():
-                param.requires_grad = True
+                param.requires_grad = False
             for param in self.win_rate.parameters():
-                param.requires_grad = True
+                param.requires_grad = False
             return
         
         ##### 否则即为训练模式，设置训练方法
@@ -80,8 +87,6 @@ class Verifier(nn.Module):
             for param in self.win_rate.parameters():
                 param.requires_grad = False
         elif training == 'predictor':
-            for param in self.response.parameters():
-                param.requires_grad = False
             for param in self.classification.parameters():
                 param.requires_grad = False
         else:
@@ -235,7 +240,11 @@ class Verifier(nn.Module):
             input_ids = input_ids.to(device)
             attention_mask = attention_mask.to(device)
             position_ids = position_ids.to(device) if position_ids is not None else None
-            labels = labels.to(device) if labels is not None else None
+            if labels is not None:
+                labels = {
+                    key: value.to(device) if isinstance(value, torch.Tensor) else value 
+                    for key, value in labels.items()
+                }
 
             # prepare attention mask
             sequence_length = input_ids.shape[1]
@@ -294,8 +303,8 @@ class Verifier(nn.Module):
             
             lm_loss = None
             cls_loss = None
-            assert isinstance(labels, tuple) and len(labels) == 2, "labels should be a tuple with 2 elements"
-            lm_labels, cls_labels = labels # unpack the labels
+            assert isinstance(labels, dict) and len(labels) == 2, "labels should be a dictionary with 2 elements"
+            lm_labels, cls_labels = labels['response'], labels['rating'] # unpack the labels
             shift_lm_logits = lm_logits[..., :-1, :].contiguous()
             shift_lm_labels = lm_labels[..., 1:].contiguous()
             lm_loss = self.loss_fn(shift_lm_logits.view(-1, shift_lm_logits.size(-1)), shift_lm_labels.view(-1))
@@ -312,7 +321,11 @@ class Verifier(nn.Module):
             raise ValueError(f"Unsupported task: {self.task}")
 
         return_dict = SequenceClassifierOutputWithPast(
-            loss=loss,
+            loss={
+                "loss":loss,
+                "lm_loss":lm_loss if lm_loss else None, 
+                "cls_loss":cls_loss if cls_loss else None,
+                },
             logits=logits,
             past_key_values=None,
             hidden_states=hidden_states,
