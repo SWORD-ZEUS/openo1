@@ -1,0 +1,111 @@
+# sft_config.yaml
+
+download_model_dir: "/storage/zhuangkai/data/openo1/download_model_weights"
+model_name: "Meta-Llama-3.1-8B-Instruct"  # 指向新的模型路径
+learning_rate: 5.0e-6
+batch_size_per_gpu: 2
+num_epochs: 1
+warmup_steps: 100
+total_steps: 10000  # 根据数据集大小和 epoch 数调整
+max_length: 1280
+gpus_per_node: 8
+val_interval: 0.1  # Validate every val_interval epoch
+weight_save_dir: "/storage/zhuangkai/data/openo1/weights/verifier"
+train_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_train_maxlen_1280.jsonl"
+# train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_short.jsonl"
+val_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_validation_maxlen_1280.jsonl"
+# val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_short.jsonl"
+test_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_test.jsonl"
+# test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_short.jsonl"
+# checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
+# load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
+gradient_accumulation_steps: 4
+log_every_n_steps: 5
+
+
+deepspeed_config:
+  # train_micro_batch_size_per_gpu 将在 Python 代码中动态计算
+  optimizer:
+    type: "Adam"
+    params:
+      lr: 5.0e-6
+      betas: [0.9, 0.999]
+      eps: 1.0e-8
+      weight_decay: 0
+  scheduler:
+    type: "WarmupLR"
+    params:
+      warmup_min_lr: 0.0
+      warmup_max_lr: 5.0e-6
+      warmup_num_steps: 100
+  fp16:
+    enabled: true
+  # zero_optimization:
+  #   stage: 3
+  #   offload_optimizer:
+  #     device: "cpu"
+  #     pin_memory: true
+  #   offload_param:
+  #     device: "cpu"
+  #     pin_memory: true
+  #   overlap_comm: true
+  #   contiguous_gradients: true
+  #   sub_group_size: 1e9
+  #   reduce_bucket_size: "auto"
+  #   stage3_prefetch_bucket_size: "auto"
+  #   stage3_param_persistence_threshold: "auto"
+  #   stage3_max_live_parameters: 1e9
+  #   stage3_max_reuse_distance: 1e9
+  #   stage3_gather_fp16_weights_on_model_save: true
+  zero_optimization:
+    stage: 2
+    contiguous_gradients: true
+    reduce_bucket_size: "auto"
+    allgather_bucket_size: "auto"
+    offload_optimizer:
+      device: "cpu"
+      pin_memory: true
+    offload_param:
+      device: "cpu"
+      pin_memory: true
+
+wandb:
+  use_wandb: true
+  # use_wandb: false
+  project: "openo1_verifier"
+  entity: "sota"  # 替换为Wandb 用户名
+  api_key: "local-dcbced16c903a79158b4ccce5f5b2af5b2d53b75"  # 替换为Wandb API 密钥
+  name: "verifier_adapter"  # 为本次运行指定一个名称
+  tags: ["verifier", "llama3-8B_Instruct"]  # 添加标签
+  notes: "verifier model fine-tuning of Llama 3 8B model, using adapter, verifier training mode"  # 添加描述
+  group: "verifier_experiments"  # 指定分组
+  job_type: "training"  # 指定作业类型
+  save_dir: "/storage/zhuangkai/data/openo1/wandb"  # 指定wandb文件存储目录
+
+test_settings:
+  is_log: false
+  log_dir: "/storage/zhuangkai/data/openo1/tensorboard/rm"
+  load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/1101225638/epoch=0-step=8502.ckpt"
+  test_results_dir: "/storage/zhuangkai/data/openo1/test_results/rm"
+  only_train_head: false
+  num_labels: 3
+  fine_tuning_method: "adapter"
+
+fine_tuning:
+  training_mode: "verifier"
+  only_train_head: false
+  num_labels: 3
+  method: "adapter"  # 可选值: "lora" 或 "adapter"
+  # LoRA 相关配置
+  lora_config:
+    r: 8
+    alpha: 32
+    dropout: 0.1
+  # Adapter 相关配置
+  adapter_config:
+    hidden_size: 64
+    adapter_dropout: 0.1
+    adapter_layers: [0, 4, 8, 12, 16, 20, 24, 28]  # 指定要添加adapter的层
+    
+
+

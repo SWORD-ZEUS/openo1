@@ -52,7 +52,7 @@ def main(args):
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
     config['model_path'] = model_path
     print(f"Model path: {model_path}")
-    model = VerifierModel(config, training=True)
+    model = Verifier(config, training=config["fine_tuning"]["training_mode"])
 
     train_dataset = VerifierModelDataset(config['train_data_path'], model_path, config['max_length'], task)
     val_dataset = VerifierModelDataset(config['val_data_path'], model_path, config['max_length'], task)
