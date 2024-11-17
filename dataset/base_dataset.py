@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 
 class BaseDataset(Dataset):
-    def __init__(self, data_path, tokenizer_name, max_length=512, task="regression"):
+    def __init__(self, data_path, tokenizer_name, max_length=1024, task="regression"):
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         self.tokenizer.pad_token = "<|reserved_special_token_0|>"
         self.max_length = max_length

@@ -26,13 +26,12 @@ class VerifierModelDataset(BaseDataset):
                 steps = item['steps']
                 
                 # 处理问题的所有步骤
-                processed_data = self.process_question_steps(question, steps)
-                for messages, rating in processed_data:
-                    if rating not in rating_counts:
-                        rating_counts[rating] = 0
-                        rating_data[rating] = []
-                    rating_data[rating].append((messages, rating))
-                    rating_counts[rating] += 1
+                messages, rating = self.process_question_steps(question, steps)
+                if rating not in rating_counts:
+                    rating_counts[rating] = 0
+                    rating_data[rating] = []
+                rating_data[rating].append((messages, rating))
+                rating_counts[rating] += 1
         
         # 找出样本数最多的类别
         majority_class = max(rating_counts.items(), key=lambda x: x[1])[0]
@@ -64,10 +63,10 @@ class VerifierModelDataset(BaseDataset):
         print("===========================\n")
         
         return data
-
-    def process_question_steps(self, question, steps):
+    
+    @classmethod
+    def process_question_steps(cls, question, steps):
         """处理问题和步骤"""
-        data = []
         previous_steps = steps.get('previous_steps', [])  # 使用get方法，默认为空列表
         current_step = steps['current_step']
         current_rating = steps['current_rating']
@@ -82,8 +81,7 @@ class VerifierModelDataset(BaseDataset):
                 messages.append({"role": "assistant", "content": step})
         messages.append({"role": "assistant", "content": current_step})
         messages.append({"role": "verifier", "content": current_resp})
-        data.append((messages.copy(), current_rating))
-        return data
+        return messages, current_rating
 
     def _find_pattern_positions(self, input_ids, pattern):
         """通用的模式匹配方法"""
@@ -114,7 +112,7 @@ class VerifierModelDataset(BaseDataset):
             
         return start_idx, end_idx
 
-    def _get_step_indices(self, input_ids, attention_mask):
+    def _get_step_indices_verifier(self, input_ids, attention_mask):
         """获取step的索引"""
         start_idx, end_idx = self._verify_segment(input_ids, 'step')
         if start_idx is None:
@@ -141,10 +139,10 @@ class VerifierModelDataset(BaseDataset):
         attention_mask = encoded['attention_mask'].squeeze()
         
         # 验证完整性
-        indices = self._get_step_indices(input_ids, attention_mask)
+        indices = self._get_step_indices_verifier(input_ids, attention_mask)
         if indices is None or not self._verify_response(input_ids):
             return None
-            
+        
         # 设置response labels
         labels = torch.full_like(input_ids, -100)
         start_idx, end_idx = self._verify_segment(input_ids, 'verifier')
@@ -167,6 +165,7 @@ class VerifierModelDataset(BaseDataset):
         # 过滤None值
         batch = [b for b in batch if b is not None]
         if not batch:
+            print("Empty batch!")
             return None
         
         return {
