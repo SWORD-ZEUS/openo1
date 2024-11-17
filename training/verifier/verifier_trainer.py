@@ -18,7 +18,9 @@ class VerifierTrainer(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         self.model.train()
         outputs = self.model(**batch)
-        loss = outputs.loss
+        loss = outputs.loss["loss"]
+        lm_loss = outputs.loss["lm_loss"]
+        cls_loss = outputs.loss["cls_loss"]
         
         # 检查loss是否为NaN
         if torch.isnan(loss):
@@ -44,12 +46,32 @@ class VerifierTrainer(pl.LightningModule):
             sync_dist=True,
             batch_size=self.config['batch_size_per_gpu']
         )
+        self.log(
+            "train_lm_loss",
+            lm_loss,
+            on_step=True, 
+            on_epoch=True, 
+            prog_bar=True, 
+            sync_dist=True,
+            batch_size=self.config['batch_size_per_gpu']
+        )
+        self.log(
+            "train_cls_loss",
+            cls_loss,
+            on_step=True, 
+            on_epoch=True, 
+            prog_bar=True, 
+            sync_dist=True,
+            batch_size=self.config['batch_size_per_gpu']
+        )
         return loss
 
     def validation_step(self, batch, batch_idx):
         self.model.eval()
         outputs = self.model(**batch)
-        loss = outputs.loss
+        loss = outputs.loss["loss"]
+        lm_loss = outputs.loss["lm_loss"]
+        cls_loss = outputs.loss["cls_loss"]
         
         # 检查loss是否为NaN
         if torch.isnan(loss):
@@ -67,6 +89,22 @@ class VerifierTrainer(pl.LightningModule):
         self.log(
             'val_loss', 
             loss, 
+            on_epoch=True, 
+            prog_bar=True, 
+            sync_dist=True,
+            batch_size=self.config['batch_size_per_gpu']
+        )
+        self.log(
+            "val_lm_loss",
+            lm_loss,
+            on_epoch=True, 
+            prog_bar=True, 
+            sync_dist=True,
+            batch_size=self.config['batch_size_per_gpu']
+        )
+        self.log(
+            "val_cls_loss",
+            cls_loss, 
             on_epoch=True, 
             prog_bar=True, 
             sync_dist=True,
