@@ -9,3 +9,15 @@ def process_state_dict(state_dict):
             new_key = key
         new_state_dict[new_key] = value
     return new_state_dict
+
+def process_state_dict4verifier(state_dict):
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith('model.response'):
+            new_key = 'model.lm_head' + key[len('model.response'):]
+        else:
+            new_key = key
+        if key.startswith("model.win_rate") or key.startswith("model.classification"):
+            new_key = key[len("model."):]
+        new_state_dict[new_key] = value
+    return new_state_dict

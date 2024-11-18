@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Union
 import torch
 from torch import nn, Tensor
-from transformers import AutoTokenizer, LlamaModel,  LlamaForCausalLM, AutoModelForCausalLM, LlamaForSequenceClassification
+from transformers import AutoTokenizer, LlamaModel,  LlamaForCausalLM, AutoModelForCausalLM, LlamaForSequenceClassification, LlamaPreTrainedModel, GenerationMixin
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from peft import get_peft_model, LoraConfig, TaskType
 
@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 # debug
 
 from models.adapter import Adapter
+from transformers import LlamaConfig, GenerationConfig
 
 class Verifier(nn.Module):
     def __init__(self,
@@ -33,10 +34,10 @@ class Verifier(nn.Module):
     def _init_base_model(self):
         """初始化基础模型和分词器"""
         assert 'model_path' in self.config, "model_path is required"
-        self.num_labels = self.config['fine_tuning'].get('num_labels', 3) # 0&1 for incorrect&correct, 2 for halting
+        self.num_labels = self.config['fine_tuning'].get('num_labels', 3)
         
-        # 初始化基础模型
-        self.model = LlamaModel.from_pretrained(
+        # 初始化为CausalLM而不是基础LlamaModel
+        self.model = AutoModelForCausalLM.from_pretrained(
             self.config['model_path'],
             torch_dtype=torch.float16,
         )
@@ -46,20 +47,11 @@ class Verifier(nn.Module):
         self.tokenizer.pad_token = "<|reserved_special_token_0|>"
         self.model.config.pad_token_id = self.tokenizer.pad_token_id
         
-        # 初始化三个头
-        # 1. 语言模型头部用于生成回复（语言头要加载预训练权重）
-        temp_model = AutoModelForCausalLM.from_pretrained(
-            self.config['model_path'],
-            torch_dtype=torch.float16,
-        )
-        self.response = nn.Linear(self.model.config.hidden_size, temp_model.config.vocab_size,bias=False)
-        self.response.load_state_dict(temp_model.lm_head.state_dict())
-        del temp_model
-        
-        # 2. 分类头部用于验证答案步骤
+        # 只需要初始化分类头和回归头
+        # 1. 分类头部用于验证答案步骤 
         self.classification = nn.Linear(self.model.config.hidden_size, self.num_labels)
         
-        # 3. 回归头部用于预测胜率
+        # 2. 回归头部用于预测胜率
         self.win_rate = nn.Linear(self.model.config.hidden_size, 1)
 
     def _setup_fine_tuning(self, training: Optional[str] = None):
@@ -67,9 +59,9 @@ class Verifier(nn.Module):
         设置训练方法
         training: 训练模式，None为非训练模式，'verifier'为训语言头和分类头，'predictor'为训练胜率头
         """
-        # 无论训不训练，训练哪种功能，语言头都是冻住的
-        for param in self.response.parameters():
-                param.requires_grad = False
+        # # 无论训不训练，训练哪种功能，语言头都是冻住的
+        # for param in self.response.parameters():
+        #         param.requires_grad = False
 
         ##### 如果training=None，非训练模式。冻住整个个模型
         if training is None:
@@ -79,18 +71,18 @@ class Verifier(nn.Module):
                 param.requires_grad = False
             for param in self.win_rate.parameters():
                 param.requires_grad = False
-            return
-        
+
         ##### 否则即为训练模式，设置训练方法
-        # 先确定训练哪个头
-        if training == 'verifier':
-            for param in self.win_rate.parameters():
-                param.requires_grad = False
-        elif training == 'predictor':
-            for param in self.classification.parameters():
-                param.requires_grad = False
         else:
-            raise ValueError(f"Unsupported training requirement: {training}")
+            # 先确定训练哪个头
+            if training == 'verifier':
+                for param in self.win_rate.parameters():
+                    param.requires_grad = False
+            elif training == 'predictor':
+                for param in self.classification.parameters():
+                    param.requires_grad = False
+            else:
+                raise ValueError(f"Unsupported training requirement: {training}")
         
         # 然后设置peft方法
         assert 'fine_tuning' in self.config, "fine_tuning config required"
@@ -103,8 +95,10 @@ class Verifier(nn.Module):
 
         self.peft_method = self.config['fine_tuning'].get('method', 'adapter')
         if self.peft_method == 'adapter':
+            print("using adapter")
             self._init_adapter()
         elif self.peft_method == 'lora':
+            print("using lora")
             self._init_lora(training)
         else:
             raise ValueError(f"Unsupported fine-tuning method: {self.peft_method}")
@@ -186,7 +180,7 @@ class Verifier(nn.Module):
         adapter_layers = adapter_config['adapter_layers']
 
         # add adapter to base model layers specified in 'adapter_layers'
-        for i, layer in enumerate(self.model.layers):
+        for i, layer in enumerate(self.model.model.layers):
             if i in adapter_layers:
                 adapter = Adapter(hidden_size, adapter_size, adapter_dropout)
                 layer.adapter = adapter
@@ -256,7 +250,7 @@ class Verifier(nn.Module):
             )
 
             # prepare input embeddings
-            inputs_embeds = self.model.embed_tokens(input_ids)
+            inputs_embeds = self.model.model.embed_tokens(input_ids)
             hidden_states = inputs_embeds
 
             # prepare position ids
@@ -268,7 +262,7 @@ class Verifier(nn.Module):
                 ).unsqueeze(0).expand(input_ids.shape[0], -1)
             
             # forward through the model
-            for i, layer in enumerate(self.model.layers):
+            for i, layer in enumerate(self.model.model.layers):
                 layer_outputs = layer(
                     hidden_states,
                     attention_mask=attention_mask,
@@ -279,7 +273,7 @@ class Verifier(nn.Module):
                 hidden_states = layer_outputs[0]
                 if hasattr(layer, 'adapter'):
                     hidden_states = layer.adapter(hidden_states)
-            hidden_states = self.model.norm(hidden_states)
+            hidden_states = self.model.model.norm(hidden_states)
         else:
             # forward with LoRA or only train head
             outputs = self.model(
@@ -296,20 +290,24 @@ class Verifier(nn.Module):
         loss = None
         if self.task == 'verifier':
             # 过分类和语言头
-            lm_logits = self.response(hidden_states)
+            lm_logits = self.model.lm_head(hidden_states)
             cls_logits = self._get_step_features(hidden_states, step_start_idx, step_end_idx, input_ids)
             cls_logits = self.classification(cls_logits)
             logits = (lm_logits, cls_logits)
+            # logits = lm_logits
             
             lm_loss = None
             cls_loss = None
-            assert isinstance(labels, dict) and len(labels) == 2, "labels should be a dictionary with 2 elements"
-            lm_labels, cls_labels = labels['response'], labels['rating'] # unpack the labels
-            shift_lm_logits = lm_logits[..., :-1, :].contiguous()
-            shift_lm_labels = lm_labels[..., 1:].contiguous()
-            lm_loss = self.loss_fn(shift_lm_logits.view(-1, shift_lm_logits.size(-1)), shift_lm_labels.view(-1))
-            cls_loss = self.loss_fn(cls_logits, cls_labels)
-            loss = lm_loss + cls_loss
+            # assert isinstance(labels, dict) and len(labels) == 2, "labels should be a dictionary with 2 elements"
+            if labels is not None:
+                lm_labels, cls_labels = labels['response'], labels['rating'] # unpack the labels
+                shift_lm_logits = lm_logits[..., :-1, :].contiguous()
+                shift_lm_labels = lm_labels[..., 1:].contiguous()
+                lm_loss = self.loss_fn(shift_lm_logits.view(-1, shift_lm_logits.size(-1)), shift_lm_labels.view(-1))
+                cls_loss = self.loss_fn(cls_logits, cls_labels)
+                loss = lm_loss + cls_loss
+            else:
+                loss = None
         elif self.task == 'predictor':
             # 过回归头
             logits = self._get_step_features(hidden_states, step_start_idx, step_end_idx, input_ids)

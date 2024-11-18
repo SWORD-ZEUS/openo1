@@ -8,14 +8,14 @@ num_epochs: 1
 warmup_steps: 100
 total_steps: 10000  # 根据数据集大小和 epoch 数调整
 max_length: 1280
-gpus_per_node: 8
+gpus_per_node: 2
 val_interval: 0.1  # Validate every val_interval epoch
 weight_save_dir: "/storage/zhuangkai/data/openo1/weights/verifier"
 train_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_train_maxlen_1280.jsonl"
 # train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_train_short.jsonl"
 val_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_validation_maxlen_1280.jsonl"
 # val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_short.jsonl"
-test_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_test.jsonl"
+test_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_test_short.jsonl"
 # test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_short.jsonl"
 # checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 # load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
@@ -84,9 +84,9 @@ wandb:
 
 test_settings:
   is_log: false
-  log_dir: "/storage/zhuangkai/data/openo1/tensorboard/rm"
-  load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/rm/1101225638/epoch=0-step=8502.ckpt"
-  test_results_dir: "/storage/zhuangkai/data/openo1/test_results/rm"
+  log_dir: "/storage/zhuangkai/data/openo1/tensorboard/verifier"
+  load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/verifier/1117001714/epoch=0-step=3369.ckpt"
+  test_results_dir: "/storage/zhuangkai/data/openo1/test_results/verifier"
   only_train_head: false
   num_labels: 3
   fine_tuning_method: "adapter"
