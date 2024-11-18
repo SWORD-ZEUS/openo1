@@ -4,7 +4,7 @@ import json
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from dataset.dataset import PRM800KDataset
+from dataset.dataset_sft import PRM800KDataset
 import torch
 from tqdm import tqdm
 
