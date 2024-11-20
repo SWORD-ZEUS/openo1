@@ -2,7 +2,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn, Tensor
 from transformers import AutoTokenizer, LlamaModel,  LlamaForCausalLM, AutoModelForCausalLM, LlamaForSequenceClassification, LlamaPreTrainedModel, GenerationMixin
-from transformers.modeling_outputs import SequenceClassifierOutputWithPast
+from transformers.modeling_outputs import SequenceClassifierOutputWithPast, CausalLMOutputWithPast
 from peft import get_peft_model, LoraConfig, TaskType
 
 # debug
@@ -13,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from models.adapter import Adapter
 from transformers import LlamaConfig, GenerationConfig
+import types
 
 class Verifier(nn.Module):
     def __init__(self,
@@ -170,8 +171,7 @@ class Verifier(nn.Module):
         return hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
 
     def _init_adapter(self):
-        """ Add adpaters to base model"""
-        # load adapter config
+        """Add adapters to base model and register hooks"""
         assert 'adapter_config' in self.config['fine_tuning'], "Need to specify adapter config"
         adapter_config = self.config['fine_tuning']['adapter_config']
         hidden_size = self.model.config.hidden_size
@@ -179,18 +179,21 @@ class Verifier(nn.Module):
         adapter_dropout = adapter_config['adapter_dropout']
         adapter_layers = adapter_config['adapter_layers']
 
-        # add adapter to base model layers specified in 'adapter_layers'
+        # 添加adapter到指定层
         for i, layer in enumerate(self.model.model.layers):
             if i in adapter_layers:
                 adapter = Adapter(hidden_size, adapter_size, adapter_dropout)
                 layer.adapter = adapter
         
-        # freeze the base model
+        # freeze基础模型参数
         for name, param in self.model.named_parameters():
             if 'adapter' in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
+            
+        # 绑定自定义前向传播
+        self.model = bind_forward_for_verifier_causalLM(self)
 
     def _init_lora(self, training):
         """ Add LoRA to base model"""
@@ -355,6 +358,91 @@ class Verifier(nn.Module):
         """
         self.model.gradient_checkpointing_disable()
 
+    # def generate(self, 
+    #     input_ids,
+    #     attention_mask,
+    #     max_new_tokens=256,
+    #     position_ids=None,  # 添加参数
+    #     **kwargs):
+    #     """
+    #     整合adapter的生成方法
+    #     """
+    #     if self.peft_method == 'adapter':
+    #         # 准备数据
+    #         device = input_ids.device
+    #         dtype = torch.float16 if self.model.dtype == torch.float16 else torch.float32
+    #         input_ids = input_ids.to(device)
+    #         attention_mask = attention_mask.to(device)
+
+    #         # 初始化生成结果
+    #         generated_ids = input_ids.clone()
+            
+    #         # 开始自回归生成
+    #         for step in range(max_new_tokens):
+    #             # 准备attention mask
+    #             sequence_length = generated_ids.shape[1]
+    #             attn_mask = _prepare_4d_causal_attention_mask(
+    #                 attention_mask,
+    #                 sequence_length, 
+    #                 dtype,
+    #                 device
+    #             )
+                
+    #             # 准备或更新 position_ids
+    #             position_ids = torch.arange(
+    #                 sequence_length,
+    #                 dtype=torch.long,
+    #                 device=device
+    #             ).unsqueeze(0).expand(input_ids.shape[0], -1)
+                
+    #             # 获取嵌入
+    #             hidden_states = self.model.model.embed_tokens(generated_ids)
+                
+    #             # 通过每一层并应用adapter
+    #             for i, layer in enumerate(self.model.model.layers):
+    #                 layer_outputs = layer(
+    #                     hidden_states,
+    #                     attention_mask=attn_mask,
+    #                     position_ids=position_ids,
+    #                     use_cache=False,
+    #                     output_attentions=False
+    #                 )
+    #                 hidden_states = layer_outputs[0]
+    #                 if hasattr(layer, 'adapter'):
+    #                     hidden_states = layer.adapter(hidden_states)
+                        
+    #             # 最后的norm和预测下一个token
+    #             hidden_states = self.model.model.norm(hidden_states)
+    #             next_token_logits = self.model.lm_head(hidden_states[:, -1, :])
+    #             next_token = torch.argmax(next_token_logits, dim=-1)
+                
+    #             generated_ids = torch.cat([generated_ids, next_token.unsqueeze(-1)], dim=-1)
+    #             attention_mask = torch.cat([attention_mask, torch.ones_like(next_token.unsqueeze(-1))], dim=-1)
+                
+    #             # 获取 eos_token_id，并确保其为列表
+    #             eos_token_ids = self.model.config.eos_token_id
+    #             if not isinstance(eos_token_ids, list):
+    #                 eos_token_ids = [eos_token_ids]
+    #             eos_token_ids = torch.tensor(eos_token_ids, device=next_token.device)
+
+    #             # 扩展 next_token 的维度以匹配 eos_token_ids
+    #             # next_token: [batch_size] -> [batch_size, 1]
+    #             # eos_token_ids: [n]
+    #             # 比较结果：形状为 [batch_size, n] 的布尔张量
+    #             # 检查是否生成了结束符号
+    #             if (next_token.unsqueeze(-1) == eos_token_ids).any():
+    #                 break
+                    
+    #         return generated_ids
+    #     else:
+    #         # 对于非adapter方法,直接使用原始generate
+    #         return self.model.generate(
+    #             input_ids=input_ids,
+    #             attention_mask=attention_mask,
+    #             position_ids=position_ids,
+    #             max_new_tokens=max_new_tokens,
+    #             **kwargs)
+
 def _prepare_4d_causal_attention_mask(
     attention_mask: torch.Tensor,
     sequence_length: int,
@@ -396,6 +484,80 @@ def _prepare_4d_causal_attention_mask(
         # 如果没有注意力掩码，只返回因果掩码
         return causal_mask.to(dtype)
     
+def bind_forward_for_verifier_causalLM(self):
+    """为 verifier 的 CausalLM 绑定自定义前向传播方法"""
+    def custom_forward(
+        model_self,
+        input_ids=None,
+        attention_mask=None,
+        position_ids=None,
+        inputs_embeds=None,
+        use_cache=None, 
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        past_key_values=None,
+        cache_position=None,  # 添加生成时需要的参数
+        **kwargs  # 添加kwargs以接收其他可能的参数
+    ):
+
+        batch_size, sequence_length = input_ids.shape[:2] 
+ 
+        inputs_embeds = model_self.model.embed_tokens(input_ids)
+        hidden_states = inputs_embeds
+
+        # 3. 获取位置编码
+        if position_ids is None:
+            device = input_ids.device if input_ids is not None else inputs_embeds.device
+            position_ids = torch.arange(
+                sequence_length, 
+                dtype=torch.long,
+                device=device
+            ).unsqueeze(0).expand(batch_size, -1)
+
+        # 4. 准备注意力掩码
+        dtype = torch.float16 if model_self.dtype == torch.float16 else torch.float32
+        attention_mask = _prepare_4d_causal_attention_mask(
+            attention_mask,
+            sequence_length,
+            dtype,
+            hidden_states.device
+        )
+
+        # 5. 通过每一层并应用 adapter
+        for i, layer in enumerate(model_self.model.layers):
+            layer_outputs = layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                output_attentions=output_attentions,
+                use_cache=use_cache
+            )
+            hidden_states = layer_outputs[0]
+            
+            # 应用 adapter(如果存在)
+            if hasattr(layer, 'adapter'):
+                hidden_states = layer.adapter(hidden_states)
+
+        # 6. 最后的 Layer Norm
+        hidden_states = model_self.model.norm(hidden_states)
+
+        # 7. 语言模型头
+        logits = model_self.lm_head(hidden_states)
+
+        # 8. 组装输出
+        return CausalLMOutputWithPast(
+            logits=logits,
+            hidden_states=hidden_states,
+            attentions=None,
+            past_key_values=None
+        )
+    
+    # 使用 types.MethodType 动态绑定方法
+    self.model.forward = types.MethodType(custom_forward, self.model)
+
+    return self.model
+
 if __name__ == "__main__":
     config = {
         'model_path': '/storage/zhangyingqi/weights_n_config/Meta-Llama-3.1-8B-Instruct',
