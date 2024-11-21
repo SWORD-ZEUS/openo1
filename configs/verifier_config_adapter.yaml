@@ -8,7 +8,7 @@ num_epochs: 2
 warmup_steps: 100
 total_steps: 10000  # 根据数据集大小和 epoch 数调整
 max_length: 1280
-gpus_per_node: 8
+gpus_per_node: 2
 val_interval: 0.1  # Validate every val_interval epoch
 weight_save_dir: "/storage/zhuangkai/data/openo1/weights/verifier"
 train_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_train_maxlen_1280.jsonl"
@@ -17,7 +17,7 @@ val_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_val
 # val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_validation_short.jsonl"
 test_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/verifier/phase12_test_short.jsonl"
 # test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/rm/phase2_test_short.jsonl"
-# checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
+# checkpoint_path: "/storage/zhuangkai/data/openo1/weights/verifier/1121164859/epoch=0-step=1684.ckpt"
 # load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 gradient_accumulation_steps: 4
 log_every_n_steps: 5
@@ -75,9 +75,9 @@ wandb:
   project: "openo1_verifier"
   entity: "sota"  # 替换为Wandb 用户名
   api_key: "local-dcbced16c903a79158b4ccce5f5b2af5b2d53b75"  # 替换为Wandb API 密钥
-  name: "verifier_lora"  # 为本次运行指定一个名称
+  name: "verifier_adapter"  # 为本次运行指定一个名称
   tags: ["verifier", "llama3-8B_Instruct"]  # 添加标签
-  notes: "verifier model fine-tuning of Llama 3 8B model, using lora, verifier training mode"  # 添加描述
+  notes: "verifier model fine-tuning of Llama 3 8B model, using adapter, verifier training mode"  # 添加描述
   group: "verifier_experiments"  # 指定分组
   job_type: "training"  # 指定作业类型
   save_dir: "/storage/zhuangkai/data/openo1/wandb"  # 指定wandb文件存储目录
@@ -85,17 +85,17 @@ wandb:
 test_settings:
   is_log: false
   log_dir: "/storage/zhuangkai/data/openo1/tensorboard/verifier"
-  load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/verifier/1121094013/epoch=1-step=6176.ckpt"
+  load_trained_weights_path: "/storage/zhuangkai/data/openo1/weights/verifier/1117001714/epoch=0-step=3369.ckpt"
   test_results_dir: "/storage/zhuangkai/data/openo1/test_results/verifier"
   only_train_head: false
   num_labels: 3
-  fine_tuning_method: "lora"
+  fine_tuning_method: "adapter"
 
 fine_tuning:
   training_mode: "verifier"
   only_train_head: false
   num_labels: 3
-  method: "lora"  # 可选值: "lora" 或 "adapter"
+  method: "adapter"  # 可选值: "lora" 或 "adapter"
   # LoRA 相关配置
   lora_config:
     r: 8
@@ -105,8 +105,8 @@ fine_tuning:
   adapter_config:
     hidden_size: 64
     adapter_dropout: 0.1
-    adapter_layers: [0, 4, 8, 12, 16, 20, 24, 28]  # 指定要添加adapter的层
-    # adapter_layers: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 24, 28]  # 指定要添加adapter的层
+    # adapter_layers: [0, 4, 8, 12, 16, 20, 24, 28]  # 指定要添加adapter的层
+    adapter_layers: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]  # 指定要添加adapter的层
     
 
 

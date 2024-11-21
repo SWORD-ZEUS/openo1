@@ -23,7 +23,7 @@ class VerifierTrainer(pl.LightningModule):
         cls_loss = outputs.loss["cls_loss"]
         
         # 检查loss是否为NaN
-        if torch.isnan(loss):
+        if torch.isnan(loss) or torch.isnan(lm_loss) or torch.isnan(cls_loss):
             # 获取当前batch的一些信息用于调试
             batch_info = {
                 'input_shape': batch['input_ids'].shape,
@@ -74,7 +74,7 @@ class VerifierTrainer(pl.LightningModule):
         cls_loss = outputs.loss["cls_loss"]
         
         # 检查loss是否为NaN
-        if torch.isnan(loss):
+        if torch.isnan(loss) or torch.isnan(lm_loss) or torch.isnan(cls_loss):
             batch_info = {
                 'batch_idx': batch_idx,
                 'input_shape': batch['input_ids'].shape,
