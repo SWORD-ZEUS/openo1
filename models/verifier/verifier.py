@@ -198,11 +198,14 @@ class Verifier(nn.Module):
     def _init_lora(self, training):
         """ Add LoRA to base model"""
         assert 'lora_config' in self.config['fine_tuning'], "Need to specify lora config"
+        is_test = self.config['is_test']
         lora_config = self.config['fine_tuning']['lora_config']
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
-            inference_mode=not training,
+            inference_mode=is_test,
+            lora_alpha=lora_config['alpha'],
             r=lora_config['r'],
+            lora_dropout=lora_config['dropout'],
         )
         self.model = get_peft_model(self.model, peft_config)
 
@@ -320,6 +323,11 @@ class Verifier(nn.Module):
             loss = self.loss_fn(logits.squeeze(), labels.squeeze())
         else:
             raise ValueError(f"Unsupported task: {self.task}")
+
+        if cls_loss is None:
+            print(f"labels: {labels}")
+            print(f"step_start_idx: {step_start_idx}")
+            print(f"step_end_idx: {step_end_idx}")
 
         return_dict = SequenceClassifierOutputWithPast(
             loss={

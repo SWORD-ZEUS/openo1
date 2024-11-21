@@ -122,7 +122,7 @@ def load_config(config_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Test Verifier Model")
-    parser.add_argument("--config", type=str, default="/zhuangkai/openo1/configs/verifier_config.yaml",
+    parser.add_argument("--config", type=str, default="/zhuangkai/openo1/configs/verifier_config_adapter.yaml",
                       help="Path to config file")
     parser.add_argument("--load_trained_weights", action="store_true",
                       help="Whether to load trained weights")
@@ -135,6 +135,7 @@ def main():
     config["model_path"] = model_path
     config["fine_tuning"]["only_train_head"] = config["test_settings"]["only_train_head"]
     config["fine_tuning"]["method"] = config["test_settings"]["fine_tuning_method"]
+    config["is_test"] = True
     model = Verifier(config, training="verifier")  # 测试模式
     model = model.float()
 

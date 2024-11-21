@@ -51,6 +51,7 @@ def main(args):
 
     model_path = os.path.join(config['download_model_dir'], config['model_name'])
     config['model_path'] = model_path
+    config['is_test'] = False
     print(f"Model path: {model_path}")
     model = Verifier(config, training=config["fine_tuning"]["training_mode"])
 
