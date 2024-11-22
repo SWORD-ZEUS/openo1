@@ -150,6 +150,7 @@ class VerifierModelDataset(BaseDataset):
             labels[start_idx:end_idx+1] = input_ids[start_idx:end_idx+1]
 
         return {
+            'messages': messages,
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': {
@@ -169,6 +170,7 @@ class VerifierModelDataset(BaseDataset):
             return None
         
         return {
+            'messages': [item['messages'] for item in batch],
             'input_ids': torch.stack([item['input_ids'] for item in batch]),
             'attention_mask': torch.stack([item['attention_mask'] for item in batch]),
             'labels': {
