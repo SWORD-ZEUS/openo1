@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from models.adapter import Adapter
 from transformers.modeling_outputs import CausalLMOutputWithPast
+import types
 
 class Generator(nn.Module):
     def __init__(self, config, training=True):
@@ -51,7 +52,7 @@ class Generator(nn.Module):
         # 为指定的transformer层添加adapter
         for i, layer in enumerate(self.model.model.layers):
             if i in adapter_layers:
-                adapter = Adapter(hidden_size, adapter_size, adapter_dropout)
+                adapter = Adapter(hidden_size, adapter_size, adapter_dropout, dtype=self.model.dtype)
                 layer.adapter = adapter
 
         # 冻结原始模型参数
@@ -61,6 +62,9 @@ class Generator(nn.Module):
         for name, param in self.model.named_parameters():
             if 'adapter' in name:
                 param.requires_grad = True
+        
+        # 绑定自定义前向传播
+        self.model = bind_forward_for_generator_causalLM(self)
 
     def generate_thinking_step(self, prompt, max_length=100):
         """
@@ -258,3 +262,76 @@ def _prepare_4d_causal_attention_mask(
     else:
         # 如果没有注意力掩码，只返回因果掩码
         return causal_mask.to(dtype)
+
+def bind_forward_for_generator_causalLM(self):
+    """为 generator 的 CausalLM 绑定自定义前向传播方法"""
+    def custom_forward(
+        model_self,
+        input_ids=None,
+        attention_mask=None,
+        position_ids=None,
+        inputs_embeds=None,
+        use_cache=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        past_key_values=None,
+        **kwargs  # 添加kwargs以接收其他可能的参数
+    ):
+        batch_size, sequence_length = input_ids.shape[:2]
+
+        # 1. 获取输入嵌入
+        inputs_embeds = model_self.model.embed_tokens(input_ids)
+        hidden_states = inputs_embeds
+
+        # 2. 获取位置编码
+        if position_ids is None:
+            device = input_ids.device
+            position_ids = torch.arange(
+                sequence_length,
+                dtype=torch.long,
+                device=device
+            ).unsqueeze(0).expand(batch_size, -1)
+
+        # 3. 准备注意力掩码
+        dtype = torch.float16 if model_self.dtype == torch.float16 else torch.float32
+        attention_mask = _prepare_4d_causal_attention_mask(
+            attention_mask,
+            sequence_length,
+            dtype,
+            hidden_states.device
+        )
+
+        # 4. 通过每一层并应用 adapter
+        for i, layer in enumerate(model_self.model.layers):
+            layer_outputs = layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                output_attentions=output_attentions,
+                use_cache=use_cache
+            )
+            hidden_states = layer_outputs[0]
+            
+            # 应用 adapter(如果存在)
+            if hasattr(layer, 'adapter'):
+                hidden_states = layer.adapter(hidden_states)
+
+        # 5. 最后的 Layer Norm
+        hidden_states = model_self.model.norm(hidden_states)
+
+        # 6. 语言模型头
+        logits = model_self.lm_head(hidden_states)
+
+        # 7. 组装输出
+        return CausalLMOutputWithPast(
+            logits=logits,
+            hidden_states=hidden_states,
+            attentions=None,
+            past_key_values=None
+        )
+    
+    # 使用 types.MethodType 动态绑定方法
+    self.model.forward = types.MethodType(custom_forward, self.model)
+
+    return self.model
