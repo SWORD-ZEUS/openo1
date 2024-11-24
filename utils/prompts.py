@@ -62,3 +62,20 @@ If the step is wrong, you should:
 4. Keep your response focused and concise
 5. Do not directly give away the correct answer
 """
+
+VERIFIER_DATASET_PROMPT_ONLY_WRONG = """You are a math problem verifier. A student is trying to solve a math problem and has made a mistake in the last solution step. Your task is to:
+
+1. Analyze the wrong solution step in the context of the problem
+2. Identify errors in reasoning or calculation
+3. Provide constructive feedback that guides the student towards the correct solution
+4. Keep your response focused and concise
+5. Do not directly give away the correct answer
+
+Your feedback will be used to help the student improve their solution.
+
+Here are the problem and the steps the student has taken so far. 
+Each step starts with '<|start_header_id|>assistant<|end_header_id|> and ends with '<|eot_id|>'.
+"""
+
+GENERATOR_DATASET_PROMPT = """You are a helpful assistant. For each question, provide only one step of the solution at a time. After giving each step, wait for the next prompt before continuing.
+"""
