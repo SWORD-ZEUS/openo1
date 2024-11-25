@@ -112,7 +112,7 @@ class VerifierModelDataset(BaseDataset):
             
         return start_idx, end_idx
 
-    def _get_step_indices_verifier(self, input_ids, attention_mask):
+    def _get_step_indices_verifier(self, input_ids):
         """获取step的索引"""
         start_idx, end_idx = self._verify_segment(input_ids, 'step')
         if start_idx is None:
@@ -139,7 +139,7 @@ class VerifierModelDataset(BaseDataset):
         attention_mask = encoded['attention_mask'].squeeze()
         
         # 验证完整性
-        indices = self._get_step_indices_verifier(input_ids, attention_mask)
+        indices = self._get_step_indices_verifier(input_ids)
         if indices is None or not self._verify_response(input_ids):
             return None
         

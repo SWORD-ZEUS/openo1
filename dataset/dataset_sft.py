@@ -2,6 +2,7 @@ import json
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 import torch
+from utils.prompts import GENERATOR_DATASET_PROMPT
 
 class PRM800KDataset(Dataset):
     def __init__(self, data_path, tokenizer_name, max_length=512):
@@ -23,7 +24,7 @@ class PRM800KDataset(Dataset):
     def process_question_steps(self, question, steps):
         # TODO: 后续需要用新的system_prompt再sft训练一次
         messages = [
-            {"role": "system", "content": "You are a helpful assistant. For each question, provide only one step of the solution at a time. After giving each step, wait for the next prompt before continuing."},
+            {"role": "system", "content": GENERATOR_DATASET_PROMPT},
             {"role": "user", "content": question}
         ]
         for step in steps:

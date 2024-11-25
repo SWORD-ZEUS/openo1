@@ -23,7 +23,7 @@ class VerifierModelTestDataset(VerifierModelDataset):
         attention_mask = encoded['attention_mask'].squeeze()
         
         # 获取step的索引
-        indices = self._get_step_indices_verifier(input_ids, attention_mask)
+        indices = self._get_step_indices_verifier(input_ids)
         if indices is None:
             return None
 
