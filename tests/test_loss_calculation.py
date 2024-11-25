@@ -56,5 +56,20 @@ class TestLossCalculation(unittest.TestCase):
         non_ignored_labels = labels[labels != -100]
         self.assertEqual(len(non_ignored_labels), 4)  # 只有4个非-100的标签
 
+def cal_loss4verifier():
+    # 构造输入数据
+    cls_logits = torch.tensor([[-2.6270, -11.2812, 14.5078],
+                            [-3.4258, -9.9219, 13.7344]], dtype=torch.float32)
+    labels = torch.tensor([2, 2])
+
+    # 定义交叉熵损失函数
+    criterion = nn.CrossEntropyLoss()
+
+    # 计算loss
+    loss = criterion(cls_logits, labels)
+
+    print(f"Loss: {loss.item()}")
+
 if __name__ == '__main__':
-    unittest.main()
+    # unittest.main()
+    cal_loss4verifier()

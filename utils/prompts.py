@@ -78,4 +78,5 @@ Each step starts with '<|start_header_id|>assistant<|end_header_id|> and ends wi
 """
 
 GENERATOR_DATASET_PROMPT = """You are a helpful assistant. For each question, provide only one step of the solution at a time. After giving each step, wait for the next prompt before continuing.
+If you find the answer, you should say: The answer is $answer$.
 """
