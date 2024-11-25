@@ -4,12 +4,14 @@ from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 
 class BaseDataset(Dataset):
-    def __init__(self, data_path, tokenizer_name, max_length=1024, task="regression"):
+    def __init__(self, data_path, tokenizer_name, max_length=1024, task="regression", head_type="bi"):
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         self.tokenizer.pad_token = "<|reserved_special_token_0|>"
         self.max_length = max_length
         self.task = task
+        self.head_type = head_type
         self.data = self.load_data(data_path)
+
 
     def load_data(self, data_path):
         """由子类实现具体的数据加载逻辑"""

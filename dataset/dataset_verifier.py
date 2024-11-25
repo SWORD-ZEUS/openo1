@@ -1,7 +1,7 @@
 from .base_dataset import BaseDataset
 import json
 import torch
-from utils.prompts import VERIFIER_DATASET_PROMPT
+from utils.prompts import VERIFIER_DATASET_PROMPT, VERIFIER_DATASET_PROMPT_ONLY_WRONG
 
 class VerifierModelDataset(BaseDataset):
     def __init__(self, *args, **kwargs):
@@ -26,7 +26,7 @@ class VerifierModelDataset(BaseDataset):
                 steps = item['steps']
                 
                 # 处理问题的所有步骤
-                messages, rating = self.process_question_steps(question, steps)
+                messages, rating = self.process_question_steps(question, steps, self.head_type)
                 if rating not in rating_counts:
                     rating_counts[rating] = 0
                     rating_data[rating] = []
@@ -65,14 +65,21 @@ class VerifierModelDataset(BaseDataset):
         return data
     
     @classmethod
-    def process_question_steps(cls, question, steps):
+    def process_question_steps(cls, question, steps, head_type):
+        if head_type == "llm":
+            from utils.prompts import VERIFIER_DATASET_PROMPT_ONLY_WRONG
+            system_prompt = VERIFIER_DATASET_PROMPT_ONLY_WRONG
+        else:
+            from utils.prompts import VERIFIER_DATASET_PROMPT
+            system_prompt = VERIFIER_DATASET_PROMPT
+        
         """处理问题和步骤"""
         previous_steps = steps.get('previous_steps', [])  # 使用get方法，默认为空列表
         current_step = steps['current_step']
         current_rating = steps['current_rating']
         current_resp = steps['current_response']
         messages = [
-            {"role": "system", "content": VERIFIER_DATASET_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": question}
         ]
         # 只有当previous_steps非空时才添加
