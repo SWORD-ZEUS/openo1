@@ -182,7 +182,8 @@ class Verifier(nn.Module):
         # 添加adapter到指定层
         for i, layer in enumerate(self.model.model.layers):
             if i in adapter_layers:
-                adapter = Adapter(hidden_size, adapter_size, adapter_dropout)
+                # adapter = Adapter(hidden_size, adapter_size, adapter_dropout)
+                adapter = Adapter(hidden_size, adapter_size, adapter_dropout, dtype=self.model.dtype)
                 layer.adapter = adapter
         
         # freeze基础模型参数
@@ -231,66 +232,18 @@ class Verifier(nn.Module):
         Returns:
             transformers.modeling_outputs.SequenceClassifierOutputWithPast: 模型输出
         """
-        if self.peft_method == 'adapter':
-            # forward with adapter
-            
-            # check data dtype and device
-            device = input_ids.device
-            dtype = torch.float16 if self.model.dtype == torch.float16 else torch.float32
-            input_ids = input_ids.to(device)
-            attention_mask = attention_mask.to(device)
-            position_ids = position_ids.to(device) if position_ids is not None else None
-            if labels is not None:
-                labels = {
-                    key: value.to(device) if isinstance(value, torch.Tensor) else value 
-                    for key, value in labels.items()
-                }
-
-            # prepare attention mask
-            sequence_length = input_ids.shape[1]
-            attention_mask = _prepare_4d_causal_attention_mask(
-                attention_mask,
-                sequence_length,
-                dtype,
-                device
-            )
-
-            # prepare input embeddings
-            inputs_embeds = self.model.model.embed_tokens(input_ids)
-            hidden_states = inputs_embeds
-
-            # prepare position ids
-            if position_ids is None:
-                position_ids = torch.arange(
-                    sequence_length,
-                    dtype=torch.long,
-                    device=device
-                ).unsqueeze(0).expand(input_ids.shape[0], -1)
-            
-            # forward through the model
-            for i, layer in enumerate(self.model.model.layers):
-                layer_outputs = layer(
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    use_cache=False,
-                    output_attentions=False
-                )
-                hidden_states = layer_outputs[0]
-                if hasattr(layer, 'adapter'):
-                    hidden_states = layer.adapter(hidden_states)
-            hidden_states = self.model.model.norm(hidden_states)
-        else:
-            # forward with LoRA or only train head
-            outputs = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                output_hidden_states=True  # 确保输出 hidden states
-            )
-            
-            # 获取最后一层的 hidden states
+        outputs = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            output_hidden_states=True  # 确保输出 hidden states
+        )
+        
+        # 获取最后一层的 hidden states
+        if self.peft_method == 'lora':
             hidden_states = outputs.hidden_states[-1]
+        elif self.peft_method == 'adapter':
+            hidden_states = outputs.hidden_states
         
         # 计算loss
         loss = None
@@ -324,22 +277,23 @@ class Verifier(nn.Module):
         else:
             raise ValueError(f"Unsupported task: {self.task}")
 
-        if cls_loss is None:
+        if cls_loss is None or lm_loss is None:
             print(f"labels: {labels}")
             print(f"step_start_idx: {step_start_idx}")
             print(f"step_end_idx: {step_end_idx}")
 
-        return_dict = SequenceClassifierOutputWithPast(
-            loss={
-                "loss":loss,
-                "lm_loss":lm_loss if lm_loss else None, 
-                "cls_loss":cls_loss if cls_loss else None,
-                },
-            logits=logits,
-            past_key_values=None,
-            hidden_states=hidden_states,
-            attentions=None,
-        )
+        return_dict = {
+            'loss': {
+            'total_loss': loss,
+            'lm_loss': lm_loss if lm_loss is not None else None,
+            'cls_loss': cls_loss if cls_loss is not None else None
+            },
+            'logits': logits,
+            'hidden_states': hidden_states,
+            'attentions': None,
+            'past_key_values': None
+        }
+
 
         return return_dict
     
@@ -365,91 +319,6 @@ class Verifier(nn.Module):
         禁用梯度检查点
         """
         self.model.gradient_checkpointing_disable()
-
-    # def generate(self, 
-    #     input_ids,
-    #     attention_mask,
-    #     max_new_tokens=256,
-    #     position_ids=None,  # 添加参数
-    #     **kwargs):
-    #     """
-    #     整合adapter的生成方法
-    #     """
-    #     if self.peft_method == 'adapter':
-    #         # 准备数据
-    #         device = input_ids.device
-    #         dtype = torch.float16 if self.model.dtype == torch.float16 else torch.float32
-    #         input_ids = input_ids.to(device)
-    #         attention_mask = attention_mask.to(device)
-
-    #         # 初始化生成结果
-    #         generated_ids = input_ids.clone()
-            
-    #         # 开始自回归生成
-    #         for step in range(max_new_tokens):
-    #             # 准备attention mask
-    #             sequence_length = generated_ids.shape[1]
-    #             attn_mask = _prepare_4d_causal_attention_mask(
-    #                 attention_mask,
-    #                 sequence_length, 
-    #                 dtype,
-    #                 device
-    #             )
-                
-    #             # 准备或更新 position_ids
-    #             position_ids = torch.arange(
-    #                 sequence_length,
-    #                 dtype=torch.long,
-    #                 device=device
-    #             ).unsqueeze(0).expand(input_ids.shape[0], -1)
-                
-    #             # 获取嵌入
-    #             hidden_states = self.model.model.embed_tokens(generated_ids)
-                
-    #             # 通过每一层并应用adapter
-    #             for i, layer in enumerate(self.model.model.layers):
-    #                 layer_outputs = layer(
-    #                     hidden_states,
-    #                     attention_mask=attn_mask,
-    #                     position_ids=position_ids,
-    #                     use_cache=False,
-    #                     output_attentions=False
-    #                 )
-    #                 hidden_states = layer_outputs[0]
-    #                 if hasattr(layer, 'adapter'):
-    #                     hidden_states = layer.adapter(hidden_states)
-                        
-    #             # 最后的norm和预测下一个token
-    #             hidden_states = self.model.model.norm(hidden_states)
-    #             next_token_logits = self.model.lm_head(hidden_states[:, -1, :])
-    #             next_token = torch.argmax(next_token_logits, dim=-1)
-                
-    #             generated_ids = torch.cat([generated_ids, next_token.unsqueeze(-1)], dim=-1)
-    #             attention_mask = torch.cat([attention_mask, torch.ones_like(next_token.unsqueeze(-1))], dim=-1)
-                
-    #             # 获取 eos_token_id，并确保其为列表
-    #             eos_token_ids = self.model.config.eos_token_id
-    #             if not isinstance(eos_token_ids, list):
-    #                 eos_token_ids = [eos_token_ids]
-    #             eos_token_ids = torch.tensor(eos_token_ids, device=next_token.device)
-
-    #             # 扩展 next_token 的维度以匹配 eos_token_ids
-    #             # next_token: [batch_size] -> [batch_size, 1]
-    #             # eos_token_ids: [n]
-    #             # 比较结果：形状为 [batch_size, n] 的布尔张量
-    #             # 检查是否生成了结束符号
-    #             if (next_token.unsqueeze(-1) == eos_token_ids).any():
-    #                 break
-                    
-    #         return generated_ids
-    #     else:
-    #         # 对于非adapter方法,直接使用原始generate
-    #         return self.model.generate(
-    #             input_ids=input_ids,
-    #             attention_mask=attention_mask,
-    #             position_ids=position_ids,
-    #             max_new_tokens=max_new_tokens,
-    #             **kwargs)
 
 def _prepare_4d_causal_attention_mask(
     attention_mask: torch.Tensor,
