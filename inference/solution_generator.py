@@ -13,16 +13,18 @@ from utils.process_state_dict import process_state_dict
 from dataset.dataset_verifier import VerifierModelDataset
 
 class SolutionGenerator:
-    def __init__(self, generator: Generator, verifier: Verifier):
+    def __init__(self, generator: Generator, verifier_cls: Verifier, verifier_llm: Verifier):
         """
         Args:
             generator: 步骤生成器 
             verifier: 步骤验证器
         """
         self.generator = generator
-        self.verifier = verifier
+        self.verifier_cls = verifier_cls
+        self.verifier_llm = verifier_llm
         self.generator.tokenizer.pad_token = "<|reserved_special_token_0|>"
-        self.verifier.tokenizer.pad_token = "<|reserved_special_token_0|>"
+        self.verifier_cls.tokenizer.pad_token = "<|reserved_special_token_0|>"
+        self.verifier_llm.tokenizer.pad_token = "<|reserved_special_token_0|>"
         
         # 检测GPU设备
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -30,7 +32,9 @@ class SolutionGenerator:
         
         # 将模型移动到GPU
         self.generator = self.generator.to(self.device).to(self.dtype)
-        self.verifier = self.verifier.to(self.device).to(self.dtype)
+        self.verifier_cls = self.verifier_cls.to(self.device).to(self.dtype)
+        self.verifier_llm = self.verifier_llm.to(self.device).to(self.dtype)
+
         
         # 验证结果到文本的映射
         self.rating_map = {
@@ -186,8 +190,8 @@ class SolutionGenerator:
     def _verify_step(self, messages: List[Dict]) -> Tuple[int, str]:
         """验证生成的步骤"""
         verifier_messages = messages.copy()
-        inputs = self.verifier.tokenizer.encode_plus(
-            self.verifier.tokenizer.apply_chat_template(verifier_messages, tokenize=False),
+        inputs = self.verifier_cls.tokenizer.encode_plus(
+            self.verifier_cls.tokenizer.apply_chat_template(verifier_messages, tokenize=False),
             return_tensors="pt",
             padding=True,
             truncation=True,
@@ -206,7 +210,7 @@ class SolutionGenerator:
         indices = self._get_step_indices_verifier(input_ids.cpu())
         
         with torch.no_grad():
-            outputs = self.verifier(
+            outputs = self.verifier_cls(
                 input_ids=inputs['input_ids'],
                 attention_mask=inputs['attention_mask'],
                 step_start_idx=torch.tensor([indices['start']], device=self.device),
@@ -220,35 +224,47 @@ class SolutionGenerator:
         # 生成verifier的响应（如果步骤错误）
         response = ""
         if predicted_class == -1:
-            response = "This last step is incorrect. Please revise your approach."
+            with torch.no_grad():
+                outputs = self.verifier_llm.model.generate(
+                    input_ids=inputs['input_ids'],
+                    attention_mask=inputs['attention_mask'],
+                    max_new_tokens=256
+                )
+            generated_tokens = outputs[0][len(inputs['input_ids']):]
+            generated_texts = self.verifier_llm.tokenizer.decode(
+                generated_tokens.cpu(),
+                skip_special_tokens=True
+            )
+            response = "This last step is incorrect. Please revise your approach." + generated_texts
 
         return predicted_class, response
 
-    def _get_step_indices(self, input_ids: torch.Tensor, step_content: str) -> Dict[str, int]:
-        """获取step在input_ids中的起止位置"""
+    # def _get_step_indices(self, input_ids: torch.Tensor, step_content: str) -> Dict[str, int]:
+    #     """获取step在input_ids中的起止位置"""
 
-        step_tokens = self.verifier.tokenizer.encode_plus(
-            step_content, 
-            return_tensors="pt",
-        )
-        step_length = len(step_tokens)
+    #     step_tokens = self.verifier.tokenizer.encode_plus(
+    #         step_content, 
+    #         return_tensors="pt",
+    #     )
+    #     step_length = len(step_tokens)
         
-        # 在input_ids中查找step_tokens的位置
-        for i in range(len(input_ids) - step_length + 1):
-            if torch.all(input_ids[i:i+step_length] == torch.tensor(step_tokens)):
-                return {
-                    'start': i,
-                    'end': i + step_length
-                }
+    #     # 在input_ids中查找step_tokens的位置
+    #     for i in range(len(input_ids) - step_length + 1):
+    #         if torch.all(input_ids[i:i+step_length] == torch.tensor(step_tokens)):
+    #             return {
+    #                 'start': i,
+    #                 'end': i + step_length
+    #             }
                 
-        raise ValueError("Could not find step in input_ids")
+    #     raise ValueError("Could not find step in input_ids")
 
 def run_inference():
     # 初始化生成器配置
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--generator_config", type=str, default="/zhuangkai/openo1/configs/sft_config.yaml")
-    parser.add_argument("--verifier_config", type=str, default="/zhuangkai/openo1/configs/verifier_config_lora_cls.yaml")
+    parser.add_argument("--verifier_cls_config", type=str, default="/zhuangkai/openo1/configs/verifier_config_lora_cls.yaml")
+    parser.add_argument("--verifier_llm_config", type=str, default="/zhuangkai/openo1/configs/verifier_config_lora_llm.yaml")
     parser.add_argument("--load_verifier_trained_weights", action="store_true")
     args = parser.parse_args()
     generator_config = load_config(args.generator_config)
@@ -257,12 +273,19 @@ def run_inference():
     generator_config["fine_tuning"]["method"] = generator_config["test_settings"]["fine_tuning"]["method"]
     
     # 初始化验证器配置  
-    verifier_config = load_config(args.verifier_config)
-    model_path_verifier = os.path.join(verifier_config['download_model_dir'], verifier_config['model_name'])
-    verifier_config["model_path"] = model_path_verifier
-    verifier_config["fine_tuning"]["only_train_head"] = not args.load_verifier_trained_weights
-    verifier_config["fine_tuning"]["method"] = verifier_config["test_settings"]["fine_tuning_method"]
-    verifier_config["is_test"] = True
+    verifier_config_cls = load_config(args.verifier_cls_config)
+    model_path_verifier_cls = os.path.join(verifier_config_cls['download_model_dir'], verifier_config_cls['model_name'])
+    verifier_config_cls["model_path"] = model_path_verifier_cls
+    verifier_config_cls["fine_tuning"]["only_train_head"] = not args.load_verifier_trained_weights
+    verifier_config_cls["fine_tuning"]["method"] = verifier_config_cls["test_settings"]["fine_tuning_method"]
+    verifier_config_cls["is_test"] = True
+
+    verifier_config_llm = load_config(args.verifier_llm_config)
+    model_path_verifier_llm = os.path.join(verifier_config_llm['download_model_dir'], verifier_config_llm['model_name'])
+    verifier_config_llm["model_path"] = model_path_verifier_llm
+    verifier_config_llm["fine_tuning"]["only_train_head"] = not args.load_verifier_trained_weights
+    verifier_config_llm["fine_tuning"]["method"] = verifier_config_llm["test_settings"]["fine_tuning_method"]
+    verifier_config_llm["is_test"] = True
 
     # 初始化模型时指定GPU设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -273,27 +296,35 @@ def run_inference():
     generator = generator.to(device)
     
     # 初始化验证器
-    verifier = Verifier(verifier_config, training="verifier")
-    verifier = verifier.to(device)
-
+    verifier_cls = Verifier(verifier_config_cls, training="verifier")
+    verifier_cls = verifier_cls.to(device)
+    verifier_llm = Verifier(verifier_config_llm, training="verifier")
+    verifier_llm = verifier_llm.to(device)
     if args.load_verifier_trained_weights:
-        trained_weights_path = verifier_config['test_settings']['load_trained_weights_path']
-        print(f"Loading trained weights from {trained_weights_path}")
-        client_sd = get_fp32_state_dict_from_zero_checkpoint(trained_weights_path)
-        processed_sd = process_state_dict(client_sd)
+        trained_weights_path_cls = verifier_config_cls['test_settings']['load_trained_weights_path']
+        print(f"Loading trained weights from {trained_weights_path_cls}")
+        client_sd_cls = get_fp32_state_dict_from_zero_checkpoint(trained_weights_path_cls)
+        processed_sd_cls = process_state_dict(client_sd_cls)
+
+        trained_weights_path_llm = verifier_config_llm['test_settings']['load_trained_weights_path']
+        print(f"Loading trained weights from {trained_weights_path_llm}")
+        client_sd_llm = get_fp32_state_dict_from_zero_checkpoint(trained_weights_path_llm)
+        processed_sd_llm = process_state_dict(client_sd_llm)
         try:
-            verifier.load_state_dict(processed_sd, strict=True)
-            verifier = verifier.to(device)  # 确保权重加载后也在GPU上
+            verifier_cls.load_state_dict(processed_sd_cls, strict=True)
+            verifier_cls = verifier_cls.to(device)  # 确保权重加载后也在GPU上
+            verifier_llm.load_state_dict(processed_sd_llm, strict=True)
+            verifier_llm = verifier_llm.to(device)  # 确保权重加载后也在GPU上
             print("\n成功加载处理后的权重")
         except Exception as e:
             print(f"\n加载权重时出错: {str(e)}")
             raise e
     
     # 创建解题生成器
-    solution_gen = SolutionGenerator(generator, verifier)
+    solution_gen = SolutionGenerator(generator, verifier_cls, verifier_llm)
     
     # 生成方案
-    question = "solve for x: $x^2 + 2x + 1 = 0$"
+    question = "You have seven bags of gold coins. Each bag has the same number of gold coins. One day, you find a bag of 53 coins. You decide to redistribute the number of coins you have so that all eight bags you hold have the same number of coins. You successfully manage to redistribute all the coins, and you also note that you have more than 200 coins. What is the smallest number of coins you could have had before finding the bag of 53 coins?"
     solution = solution_gen.generate_solution(question)
     
     # 打印结果
