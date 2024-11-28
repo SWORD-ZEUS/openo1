@@ -19,21 +19,21 @@ class SFTTrainer(pl.LightningModule):
         self.model.train()
         outputs = self.model(**batch)
         loss = outputs.loss
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True, batch_size=self.config['batch_size_per_gpu'])
         return loss
 
     def validation_step(self, batch, batch_idx):
         self.model.eval()
         outputs = self.model(**batch)
         loss = outputs.loss
-        self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log('val_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True,batch_size=self.config['batch_size_per_gpu'])
         return loss
 
     def test_step(self, batch, batch_idx):
         self.model.eval()
         outputs = self.model(**batch)
         loss = outputs.loss
-        self.log('test_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log('test_loss', loss, on_epoch=True, prog_bar=True, sync_dist=True,batch_size=self.config['batch_size_per_gpu'])
         return loss
 
     def configure_optimizers(self):

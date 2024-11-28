@@ -91,89 +91,40 @@ class Generator(nn.Module):
             labels: 标签 (可选)
             position_ids: 位置编码 (可选)
         """
-        if self.config['fine_tuning']['method'] == 'adapter':
-            # 确保输入在正确的设备上并且类型正确
-            device = input_ids.device
-            dtype = torch.float16 if self.model.dtype == torch.float16 else torch.float32
-            
-            input_ids = input_ids.to(device)
-            attention_mask = attention_mask.to(device) if attention_mask is not None else None
-            position_ids = position_ids.to(device) if position_ids is not None else None
-            labels = labels.to(device) if labels is not None else None
-            
-            # 获取序列长度
-            sequence_length = input_ids.shape[1]
-            
-            # 将注意力掩码转换为4D格式
-            if attention_mask is not None:
-                attention_mask = _prepare_4d_causal_attention_mask(
-                    attention_mask,
-                    sequence_length,
-                    dtype,
-                    device
-                )
-            
-            # 获取原始模型的所有模块
-            model_layers = self.model.model.layers
-            
-            # 获取输入嵌入
-            inputs_embeds = self.model.model.embed_tokens(input_ids)
-            hidden_states = inputs_embeds
-            
-            # 处理 position_ids
-            if position_ids is None:
-                # 创建位置编码
-                position_ids = torch.arange(
-                    input_ids.shape[1], 
-                    dtype=torch.long, 
-                    device=input_ids.device
-                ).unsqueeze(0).expand(input_ids.shape[0], -1)
-            
-            # 逐层处理
-            for i, layer in enumerate(model_layers):
-                layer_outputs = layer(
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    use_cache=False,
-                    output_attentions=False
-                )
-                hidden_states = layer_outputs[0]
+        outputs = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            output_hidden_states=True  # 确保输出 hidden states
+        )
                 
-                # 如果该层有adapter，则应用adapter
-                if hasattr(layer, 'adapter'):
-                    hidden_states = layer.adapter(hidden_states)
+        # 获取最后一层的 hidden states
+        if self.config['fine_tuning']['method'] == 'lora':
+            hidden_states = outputs.hidden_states[-1]
+        elif self.config['fine_tuning']['method'] == 'adapter':
+            hidden_states = outputs.hidden_states[-1]
             
-            # 通过最后的层范数
-            hidden_states = self.model.model.norm(hidden_states)
-            
-            # 计算语言模型的输出
-            lm_logits = self.model.lm_head(hidden_states)
-            
+        # 计算语言模型的输出
+        lm_logits = self.model.lm_head(hidden_states)
+        
+        # 计算损失
+        loss = None
+        if labels is not None:
+            # 重塑 logits 和标签
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
             # 计算损失
-            loss = None
-            if labels is not None:
-                # 重塑 logits 和标签
-                shift_logits = lm_logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # 计算损失
-                loss_fct = torch.nn.CrossEntropyLoss()
-                loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-            
-            return CausalLMOutputWithPast(
-                loss=loss,
-                logits=lm_logits,
-                past_key_values=None,
-                hidden_states=hidden_states,
-                attentions=None
-            )
-        else:
-            return self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                labels=labels
-            )
+            loss_fct = torch.nn.CrossEntropyLoss()
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        
+        return CausalLMOutputWithPast(
+            loss=loss,
+            logits=lm_logits,
+            past_key_values=None,
+            hidden_states=hidden_states,
+            attentions=None
+        )
+
 
     def set_inference_mode(self, inference_mode):
         """
