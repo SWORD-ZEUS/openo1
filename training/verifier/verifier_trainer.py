@@ -21,27 +21,7 @@ class VerifierTrainer(pl.LightningModule):
         loss = outputs["loss"]["total_loss"]
         lm_loss = outputs["loss"]["lm_loss"]
         cls_loss = outputs["loss"]["cls_loss"]
-        _, cls_logits = outputs["logits"]
-
-        if loss is None or lm_loss is None or cls_loss is None:
-            batch_info = {
-                'batch_idx': batch_idx,
-                'input_shape': batch['input_ids'].shape,
-                'labels': batch['labels'],
-                'step_start_idx': batch['step_start_idx'],
-                'step_end_idx': batch['step_end_idx'],
-                'message': batch['messages']
-            }
-            error_msg = (
-                f"训练过程中出现None损失值!\n"
-                f"Batch信息: {batch_info}\n"
-                f"loss is: {loss}\n"
-                f"lm_loss is: {lm_loss}\n"
-                f"cls_loss is: {cls_loss}\n"
-                f"cls_logits is: {cls_logits}"
-            )
-            raise ValueError(error_msg)
-        
+   
         # 检查loss是否为NaN
         if torch.isnan(loss) or torch.isnan(lm_loss) or torch.isnan(cls_loss):
             # 获取当前batch的一些信息用于调试
@@ -92,27 +72,7 @@ class VerifierTrainer(pl.LightningModule):
         loss = outputs["loss"]["total_loss"]
         lm_loss = outputs["loss"]["lm_loss"]
         cls_loss = outputs["loss"]["cls_loss"]
-        _, cls_logits = outputs["logits"]
 
-        if loss is None or lm_loss is None or cls_loss is None:
-            batch_info = {
-                'batch_idx': batch_idx,
-                'input_shape': batch['input_ids'].shape,
-                'labels': batch['labels'],
-                'step_start_idx': batch['step_start_idx'],
-                'step_end_idx': batch['step_end_idx'],
-                'message': batch['messages']
-            }
-            error_msg = (
-                f"验证过程中出现None损失值!\n"
-                f"Batch信息: {batch_info}\n"
-                f"loss is: {loss}\n"
-                f"lm_loss is: {lm_loss}\n"
-                f"cls_loss is: {cls_loss}\n"
-                f"cls_logits is: {cls_logits}"
-            )
-            raise ValueError(error_msg)
-        
         # 检查loss是否为NaN
         if torch.isnan(loss) or torch.isnan(lm_loss) or torch.isnan(cls_loss):
             batch_info = {
