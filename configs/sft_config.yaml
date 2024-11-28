@@ -3,20 +3,21 @@
 download_model_dir: "/storage/zhuangkai/data/openo1/download_model_weights"
 model_name: "Meta-Llama-3.1-8B-Instruct"  # 指向新的模型路径
 learning_rate: 5.0e-6
-batch_size_per_gpu: 4
-num_epochs: 5
+batch_size_per_gpu: 2
+num_epochs: 3
 warmup_steps: 100
 total_steps: 10000  # 根据数据集大小和 epoch 数调整
-max_length: 1024
-gpus_per_node: 4
+max_length: 1280
+gpus_per_node: 8
 val_interval: 0.1  # Validate every val_interval epoch
 weight_save_dir: "/storage/zhuangkai/data/openo1/weights/sft"
-train_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/sft/phase2_train_gt_pre_generated_solution_to_step_list.jsonl"
-val_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/sft/phase2_validation_gt_pre_generated_solution_to_step_list.jsonl"
-test_data_path: "/zhuangkai/openo1/dataset/prm800k/processsed/sft/phase2_test_gt_pre_generated_solution_to_step_list.jsonl"
-checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/1026230936/epoch=2-step=788.ckpt"
+train_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/sft/phase2_train_maxlen_1280.jsonl"
+val_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/sft/phase2_validation_maxlen_1280.jsonl"
+test_data_path: "/zhuangkai/openo1/dataset/prm800k/processed/sft/phase2_test_maxlen_1280.jsonl"
+# checkpoint_path: "/storage/zhuangkai/data/openo1/weights/sft/1026230936/epoch=2-step=788.ckpt"
 # load_lora_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/epoch=2-step=4911.ckpt"
 gradient_accumulation_steps: 4
+log_every_n_steps: 5
 
 
 deepspeed_config:
@@ -73,7 +74,7 @@ wandb:
   api_key: "local-dcbced16c903a79158b4ccce5f5b2af5b2d53b75"  # 替换为Wandb API 密钥
   name: "sft_run"  # 为本次运行指定一个名称
   tags: ["sft", "llama3-8B_Instruct"]  # 添加标签
-  notes: "Supervised fine-tuning of Llama 3 8B model"  # 添加描述
+  notes: "Supervised fine-tuning of Llama 3 8B model, using lora"  # 添加描述
   group: "sft_experiments"  # 指定分组
   job_type: "training"  # 指定作业类型
   save_dir: "/storage/zhuangkai/data/openo1/wandb"  # 指定wandb文件存储目录
@@ -81,12 +82,13 @@ wandb:
 test_settings:
   is_log: false
   log_dir: "/storage/zhuangkai/data/openo1/tensorboard"
-  load_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/1026230936/epoch=2-step=788.ckpt"
+  load_weights_path: "/storage/zhuangkai/data/openo1/weights/sft/1128173654/epoch=2-step=5048.ckpt"
   fine_tuning:
-    method: "adapter"  # 可选值: "lora" 或 "adapter"
+    method: "lora"  # 可选值: "lora" 或 "adapter"
+    # method: None
     lora_config:
-      r: 8
-      alpha: 32
+      r: 128
+      alpha: 256
       dropout: 0.1
     adapter_config:
       hidden_size: 64
@@ -95,11 +97,11 @@ test_settings:
     
 
 fine_tuning:
-  method: "adapter"  # 可选值: "lora" 或 "adapter"
+  method: "lora"  # 可选值: "lora" 或 "adapter"
   # LoRA 相关配置
   lora_config:
-    r: 8
-    alpha: 32
+    r: 128
+    alpha: 256
     dropout: 0.1
   # Adapter 相关配置
   adapter_config:

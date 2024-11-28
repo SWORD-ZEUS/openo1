@@ -14,11 +14,11 @@ from dataset.dataset_sft import PRM800KDataset
 from dataset.data_module import PRM800KDataModule
 from training.sft.sft_trainer import SFTTrainer
 import time
+from utils.global_funcs import load_config
 
 def main(config_path):
     # 加载配置
-    with open(config_path, 'r') as file:
-        config = yaml.safe_load(file)
+    config = load_config(config_path)
     batch_size = config['batch_size_per_gpu']
     config['deepspeed_config']['train_micro_batch_size_per_gpu'] = batch_size
 
@@ -84,6 +84,7 @@ def main(config_path):
         accumulate_grad_batches=config['gradient_accumulation_steps'],
         val_check_interval=config['val_interval'],
         logger=logger,
+        log_every_n_steps=config['log_every_n_steps'],
         callbacks=[pl.callbacks.ModelCheckpoint(
             dirpath=os.path.join(config['weight_save_dir'], time.strftime('%m%d%H%M%S')), 
             save_top_k=1, 
